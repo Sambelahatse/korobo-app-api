@@ -1,0 +1,53 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryColumn,
+  UpdateDateColumn
+} from "typeorm";
+import type { Relation } from "typeorm";
+import { Planification } from "./Planification";
+import { Rapport } from "./Rapport";
+
+export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
+
+@Entity({ name: "app_users", schema: "public" })
+export class AppUser {
+  // The UUID is the matching Supabase Auth auth.users.id; it is not generated here.
+  @PrimaryColumn("uuid")
+  id!: string;
+
+  @Column({ name: "full_name", type: "varchar", length: 160 })
+  fullName!: string;
+
+  @Column({ type: "varchar", length: 254, unique: true })
+  email!: string;
+
+  @Column({ type: "varchar", length: 40, default: "technician" })
+  role!: AppUserRole;
+
+  @Column({ type: "varchar", length: 40, nullable: true })
+  phone!: string | null;
+
+  @Column({ name: "is_active", type: "boolean", default: true })
+  isActive!: boolean;
+
+  @CreateDateColumn({ name: "created_at", type: "timestamptz" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
+  updatedAt!: Date;
+
+  @OneToMany(() => Planification, (planification) => planification.assignedTo)
+  assignedPlanifications!: Relation<Planification[]>;
+
+  @OneToMany(() => Planification, (planification) => planification.createdBy)
+  createdPlanifications!: Relation<Planification[]>;
+
+  @OneToMany(() => Rapport, (rapport) => rapport.createdBy)
+  createdRapports!: Relation<Rapport[]>;
+
+  @OneToMany(() => Rapport, (rapport) => rapport.validatedBy)
+  validatedRapports!: Relation<Rapport[]>;
+}
