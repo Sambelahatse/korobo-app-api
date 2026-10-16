@@ -7,7 +7,8 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   SUPABASE_URL: z.string().url().optional().or(z.literal("")),
   SUPABASE_ANON_KEY: z.string().optional().or(z.literal("")),
-  DATABASE_URL: z.string().optional().or(z.literal(""))
+  DATABASE_URL: z.string().optional().or(z.literal("")),
+  DATABASE_CA_CERT: z.string().optional().or(z.literal(""))
 });
 
 const parsed = envSchema.safeParse(process.env);
