@@ -10,7 +10,12 @@ import { Rapport } from "../entities/Rapport";
 export const AppDataSource = new DataSource({
   type: "postgres",
   ...(env.DATABASE_URL ? { url: env.DATABASE_URL } : {}),
-  ssl: env.DATABASE_URL ? { rejectUnauthorized: true } : false,
+  ssl: env.DATABASE_URL
+    ? {
+        rejectUnauthorized: true,
+        ...(env.DATABASE_CA_CERT ? { ca: env.DATABASE_CA_CERT.replace(/\\n/g, "\n") } : {})
+      }
+    : false,
   entities: [AppUser, Site, Equipment, Planification, Rapport],
   migrations: ["migrations/*.{ts,js}"],
   synchronize: false,
