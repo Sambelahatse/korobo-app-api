@@ -7,9 +7,17 @@ import { Equipment } from "../entities/Equipment";
 import { Planification } from "../entities/Planification";
 import { Rapport } from "../entities/Rapport";
 
+const databaseUrl = env.DATABASE_URL ? new URL(env.DATABASE_URL) : undefined;
+// Keep SSL settings in the TypeORM config so a URL sslmode parameter cannot override the trusted CA.
+if (databaseUrl) {
+  for (const key of ["sslmode", "ssl", "sslcert", "sslkey", "sslrootcert"]) {
+    databaseUrl.searchParams.delete(key);
+  }
+}
+
 export const AppDataSource = new DataSource({
   type: "postgres",
-  ...(env.DATABASE_URL ? { url: env.DATABASE_URL } : {}),
+  ...(databaseUrl ? { url: databaseUrl.toString() } : {}),
   ssl: env.DATABASE_URL
     ? {
         rejectUnauthorized: true,
