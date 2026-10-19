@@ -13,6 +13,7 @@ import {
   hashToken,
   readRefreshCookie,
   refreshCookieOptions,
+  refreshCookieClearOptions,
   refreshTokenLifetimeMs
 } from "../services/authTokens";
 
@@ -131,7 +132,7 @@ authRouter.post("/refresh", async (req, res, next) => {
         session.revokedAt = new Date();
         await sessionRepo.save(session);
       }
-      res.clearCookie("korobo_refresh", refreshCookieOptions());
+      res.clearCookie("korobo_refresh", refreshCookieClearOptions());
       res.status(401).json({ error: { code: "REFRESH_EXPIRED", message: "La session a expiré. Reconnectez-vous." } });
       return;
     }
@@ -140,7 +141,7 @@ authRouter.post("/refresh", async (req, res, next) => {
     if (!profile || !profile.isActive) {
       session.revokedAt = new Date();
       await sessionRepo.save(session);
-      res.clearCookie("korobo_refresh", refreshCookieOptions());
+      res.clearCookie("korobo_refresh", refreshCookieClearOptions());
       res.status(403).json({ error: { code: "ACCOUNT_NOT_ALLOWED", message: "Ce compte n'est pas actif." } });
       return;
     }
@@ -166,7 +167,7 @@ authRouter.post("/logout", async (req, res, next) => {
         { revokedAt: new Date() }
       );
     }
-    res.clearCookie("korobo_refresh", refreshCookieOptions());
+    res.clearCookie("korobo_refresh", refreshCookieClearOptions());
     res.status(204).end();
   } catch (error) {
     next(error);
