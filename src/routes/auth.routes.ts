@@ -234,8 +234,13 @@ authRouter.post("/migration/setup-link", async (req, res, next) => {
       passwordSetupExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
     });
     res.status(200).json({
-      data: { email: profile.email, setupToken, expiresInSeconds: 48 * 60 * 60 },
-      message: "Transmettez le jeton par un canal sécurisé. Il ne sera affiché qu'une seule fois."
+      data: {
+        email: profile.email,
+        setupToken,
+        setupUrl: `${env.CORS_ORIGIN.split(",")[0].trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
+        expiresInSeconds: 48 * 60 * 60
+      },
+      message: "Transmettez ce lien par un canal sécurisé. Il ne sera affiché qu'une seule fois."
     });
   } catch (error) {
     next(error);
