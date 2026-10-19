@@ -3,9 +3,9 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { app } from "./app";
 import { env } from "./config/env";
-import { getSupabaseClient } from "./config/supabase";
 import { AppDataSource, initializeDatabase } from "./database/data-source";
 import { AppUser } from "./entities/AppUser";
+import { verifyAccessToken } from "./services/authTokens";
 
 async function main(): Promise<void> {
   await initializeDatabase();
@@ -13,12 +13,10 @@ async function main(): Promise<void> {
   const server = createServer(app);
   const allowedOrigins = env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean);
   const io = new Server(server, {
-    cors: { origin: allowedOrigins, methods: ["GET", "POST"] },
+    cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true },
     transports: ["websocket", "polling"]
   });
 
-  // A WebSocket connection is accepted only after validating the Supabase access
-  // token and confirming that the corresponding KOROBO profile is active.
   io.use(async (socket, next) => {
     const token = socket.handshake.auth?.accessToken;
     if (typeof token !== "string" || !token) {
@@ -27,20 +25,16 @@ async function main(): Promise<void> {
     }
 
     try {
-      const { data, error } = await getSupabaseClient().auth.getUser(token);
-      if (error || !data.user || !AppDataSource.isInitialized) {
-        next(new Error("INVALID_SESSION"));
+      const claims = verifyAccessToken(token);
+      if (!AppDataSource.isInitialized) {
+        next(new Error("AUTH_UNAVAILABLE"));
         return;
       }
-
-      const profile = await AppDataSource.getRepository(AppUser).findOne({
-        where: { id: data.user.id }
-      });
+      const profile = await AppDataSource.getRepository(AppUser).findOne({ where: { id: claims.sub } });
       if (!profile || !profile.isActive) {
         next(new Error("ACCOUNT_NOT_ALLOWED"));
         return;
       }
-
       socket.data.authProfile = {
         id: profile.id,
         fullName: profile.fullName,
@@ -50,17 +44,14 @@ async function main(): Promise<void> {
         isActive: profile.isActive
       };
       next();
-    } catch (error) {
-      console.error("Socket authentication failed:", error);
-      next(new Error("AUTH_UNAVAILABLE"));
+    } catch {
+      next(new Error("INVALID_SESSION"));
     }
   });
 
   io.on("connection", (socket) => {
     socket.emit("auth:verified", { data: socket.data.authProfile });
-    socket.on("auth:ping", () => {
-      socket.emit("auth:pong", { timestamp: new Date().toISOString() });
-    });
+    socket.on("auth:ping", () => socket.emit("auth:pong", { timestamp: new Date().toISOString() }));
   });
 
   server.listen(env.PORT, "0.0.0.0", () => {
@@ -70,13 +61,10 @@ async function main(): Promise<void> {
   function shutdown(signal: string): void {
     console.info(`${signal} received; shutting down gracefully`);
     io.close(async () => {
-      if (AppDataSource.isInitialized) {
-        await AppDataSource.destroy();
-      }
+      if (AppDataSource.isInitialized) await AppDataSource.destroy();
       process.exit();
     });
   }
-
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
