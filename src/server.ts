@@ -69,18 +69,11 @@ async function main(): Promise<void> {
 
   function shutdown(signal: string): void {
     console.info(`${signal} received; shutting down gracefully`);
-    io.close(() => {
-      server.close(async (error) => {
-        if (error) {
-          console.error("Error while closing HTTP server:", error);
-          process.exitCode = 1;
-        }
-
-        if (AppDataSource.isInitialized) {
-          await AppDataSource.destroy();
-        }
-        process.exit();
-      });
+    io.close(async () => {
+      if (AppDataSource.isInitialized) {
+        await AppDataSource.destroy();
+      }
+      process.exit();
     });
   }
 
