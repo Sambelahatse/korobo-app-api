@@ -2,13 +2,13 @@ import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { env } from "../config/env";
 import { AppUser } from "../entities/AppUser";
+import { AuthSession } from "../entities/AuthSession";
 import { Site } from "../entities/Site";
 import { Equipment } from "../entities/Equipment";
 import { Planification } from "../entities/Planification";
 import { Rapport } from "../entities/Rapport";
 
 const databaseUrl = env.DATABASE_URL ? new URL(env.DATABASE_URL) : undefined;
-// Keep SSL settings in the TypeORM config so a URL sslmode parameter cannot override the trusted CA.
 if (databaseUrl) {
   for (const key of ["sslmode", "ssl", "sslcert", "sslkey", "sslrootcert"]) {
     databaseUrl.searchParams.delete(key);
@@ -24,7 +24,7 @@ export const AppDataSource = new DataSource({
         ...(env.DATABASE_CA_CERT ? { ca: env.DATABASE_CA_CERT.replace(/\\n/g, "\n") } : {})
       }
     : false,
-  entities: [AppUser, Site, Equipment, Planification, Rapport],
+  entities: [AppUser, AuthSession, Site, Equipment, Planification, Rapport],
   migrations: ["migrations/*.{ts,js}"],
   synchronize: false,
   migrationsRun: false,
