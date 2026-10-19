@@ -210,6 +210,38 @@ authRouter.post("/password/setup", async (req, res, next) => {
   }
 });
 
+authRouter.post("/migration/setup-link", async (req, res, next) => {
+  if (!tokenMatches(req.header("x-owner-bootstrap-token"), env.OWNER_BOOTSTRAP_TOKEN)) {
+    res.status(403).json({ error: { code: "MIGRATION_TOKEN_INVALID", message: "La préparation de migration n'est pas autorisée." } });
+    return;
+  }
+  const parsed = setupLinkSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Saisissez une adresse e-mail valide." } });
+    return;
+  }
+  try {
+    const repo = AppDataSource.getRepository(AppUser);
+    const profile = await repo.findOne({ where: { email: parsed.data.email.toLowerCase() } });
+    if (!profile || !profile.isActive) {
+      // Avoid revealing whether a specific email exists during migration.
+      res.status(200).json({ message: "Si ce compte existe et est actif, un jeton de configuration a été préparé." });
+      return;
+    }
+    const setupToken = randomBytes(32).toString("base64url");
+    await repo.update(profile.id, {
+      passwordSetupTokenHash: hashToken(setupToken),
+      passwordSetupExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000)
+    });
+    res.status(200).json({
+      data: { email: profile.email, setupToken, expiresInSeconds: 48 * 60 * 60 },
+      message: "Transmettez le jeton par un canal sécurisé. Il ne sera affiché qu'une seule fois."
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRouter.post("/password/setup-link", authenticate, requireAdmin, async (req, res, next) => {
   const parsed = setupLinkSchema.safeParse(req.body);
   if (!parsed.success) {
