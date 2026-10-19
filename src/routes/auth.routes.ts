@@ -270,7 +270,7 @@ authRouter.post("/password/setup-link", authenticate, requireAdmin, async (req, 
       data: {
         email: profile.email,
         setupToken,
-        setupUrl: `${env.CORS_ORIGIN.split(",")[0].trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
+        setupUrl: `${(env.CORS_ORIGIN.split(",")[0] ?? "").trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
         expiresInSeconds: 48 * 60 * 60
       },
       message: "Transmettez ce lien à l'utilisateur par un canal sécurisé. Le lien n'est affiché qu'une fois."
@@ -360,7 +360,7 @@ authRouter.post("/invite", authenticate, requireAdmin, async (req, res, next) =>
     res.status(201).json({
       data: profilePayload(profile),
       setupToken,
-      setupUrl: `${env.CORS_ORIGIN.split(",")[0].trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
+      setupUrl: `${(env.CORS_ORIGIN.split(",")[0] ?? "").trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
       setupTokenExpiresInSeconds: 48 * 60 * 60,
       message: "Compte créé. Transmettez le jeton de première connexion à l'utilisateur par un canal sécurisé."
     });
