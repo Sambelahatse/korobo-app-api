@@ -162,7 +162,7 @@ authRouter.post("/logout", async (req, res, next) => {
     const rawToken = readRefreshCookie(req.headers.cookie);
     if (rawToken && AppDataSource.isInitialized) {
       await AppDataSource.getRepository(AuthSession).update(
-        { refreshTokenHash: hashToken(rawToken), revokedAt: null },
+        { refreshTokenHash: hashToken(rawToken) },
         { revokedAt: new Date() }
       );
     }
@@ -237,7 +237,7 @@ authRouter.post("/migration/setup-link", async (req, res, next) => {
       data: {
         email: profile.email,
         setupToken,
-        setupUrl: `${env.CORS_ORIGIN.split(",")[0].trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
+        setupUrl: `${(env.CORS_ORIGIN.split(",")[0] ?? "").trim()}/?auth=reset-password&token=${encodeURIComponent(setupToken)}`,
         expiresInSeconds: 48 * 60 * 60
       },
       message: "Transmettez ce lien par un canal sécurisé. Il ne sera affiché qu'une seule fois."
