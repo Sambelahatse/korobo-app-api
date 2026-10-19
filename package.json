@@ -10,7 +10,6 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.57.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
