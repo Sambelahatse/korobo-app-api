@@ -58,6 +58,15 @@ export function refreshCookieOptions() {
   };
 }
 
+export function refreshCookieClearOptions() {
+  return {
+    httpOnly: true,
+    secure: env.COOKIE_SECURE === "true",
+    sameSite: "strict" as const,
+    path: "/auth"
+  };
+}
+
 export function readRefreshCookie(cookieHeader: string | undefined): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(";")) {
