@@ -1,28 +1,86 @@
 import "reflect-metadata";
+import { createServer } from "node:http";
+import { Server } from "socket.io";
 import { app } from "./app";
 import { env } from "./config/env";
-import { initializeDatabase } from "./database/data-source";
+import { getSupabaseClient } from "./config/supabase";
+import { AppDataSource, initializeDatabase } from "./database/data-source";
+import { AppUser } from "./entities/AppUser";
 
 async function main(): Promise<void> {
   await initializeDatabase();
 
-  const server = app.listen(env.PORT, "0.0.0.0", () => {
+  const server = createServer(app);
+  const allowedOrigins = env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean);
+  const io = new Server(server, {
+    cors: { origin: allowedOrigins, methods: ["GET", "POST"] },
+    transports: ["websocket", "polling"]
+  });
+
+  // A WebSocket connection is accepted only after validating the Supabase access
+  // token and confirming that the corresponding KOROBO profile is active.
+  io.use(async (socket, next) => {
+    const token = socket.handshake.auth?.accessToken;
+    if (typeof token !== "string" || !token) {
+      next(new Error("AUTH_REQUIRED"));
+      return;
+    }
+
+    try {
+      const { data, error } = await getSupabaseClient().auth.getUser(token);
+      if (error || !data.user || !AppDataSource.isInitialized) {
+        next(new Error("INVALID_SESSION"));
+        return;
+      }
+
+      const profile = await AppDataSource.getRepository(AppUser).findOne({
+        where: { id: data.user.id }
+      });
+      if (!profile || !profile.isActive) {
+        next(new Error("ACCOUNT_NOT_ALLOWED"));
+        return;
+      }
+
+      socket.data.authProfile = {
+        id: profile.id,
+        fullName: profile.fullName,
+        email: profile.email,
+        role: profile.role,
+        phone: profile.phone,
+        isActive: profile.isActive
+      };
+      next();
+    } catch (error) {
+      console.error("Socket authentication failed:", error);
+      next(new Error("AUTH_UNAVAILABLE"));
+    }
+  });
+
+  io.on("connection", (socket) => {
+    socket.emit("auth:verified", { data: socket.data.authProfile });
+    socket.on("auth:ping", () => {
+      socket.emit("auth:pong", { timestamp: new Date().toISOString() });
+    });
+  });
+
+  server.listen(env.PORT, "0.0.0.0", () => {
     console.info(`KOROBO APP API listening on port ${env.PORT}`);
   });
 
   function shutdown(signal: string): void {
     console.info(`${signal} received; shutting down gracefully`);
-    server.close(async (error) => {
-      if (error) {
-        console.error("Error while closing HTTP server:", error);
-        process.exitCode = 1;
-      }
+    io.close(() => {
+      server.close(async (error) => {
+        if (error) {
+          console.error("Error while closing HTTP server:", error);
+          process.exitCode = 1;
+        }
 
-      const { AppDataSource } = await import("./database/data-source");
-      if (AppDataSource.isInitialized) {
-        await AppDataSource.destroy();
-      }
-      process.exit();
+        if (AppDataSource.isInitialized) {
+          await AppDataSource.destroy();
+        }
+        process.exit();
+      });
     });
   }
 
