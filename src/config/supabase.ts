@@ -6,11 +6,12 @@ let client: SupabaseClient | undefined;
 export function getSupabaseClient(): SupabaseClient {
   if (client) return client;
 
-  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
+  const publicKey = env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY;
+  if (!env.SUPABASE_URL || !publicKey) {
     throw new Error("Supabase URL and anon key are required for authentication.");
   }
 
-  client = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+  client = createClient(env.SUPABASE_URL, publicKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
