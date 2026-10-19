@@ -12,7 +12,8 @@ export const authRouter = Router();
 const ownerSchema = z.object({
   fullName: z.string().trim().min(2).max(160),
   email: z.string().trim().email().max(254),
-  password: z.string().min(12).max(128)
+  password: z.string().min(12).max(128),
+  phone: z.string().trim().max(40).optional()
 });
 
 const inviteSchema = z.object({
@@ -90,7 +91,7 @@ authRouter.post("/bootstrap-owner", async (req, res, next) => {
       fullName: parsed.data.fullName,
       email: parsed.data.email.toLowerCase(),
       role: "admin" satisfies AppUserRole,
-      phone: null,
+      phone: parsed.data.phone || null,
       isActive: true
     });
     await queryRunner.manager.save(AppUser, profile);
