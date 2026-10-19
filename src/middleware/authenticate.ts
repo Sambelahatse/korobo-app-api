@@ -16,7 +16,7 @@ export async function authenticate(
   }
 
   try {
-    const claims = verifyAccessToken(match[1]);
+    const claims = verifyAccessToken(match[1]!);
     if (!AppDataSource.isInitialized) {
       res.status(503).json({ error: { code: "DATABASE_UNAVAILABLE", message: "Authentication is temporarily unavailable." } });
       return;
