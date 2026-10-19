@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { compare, hash } from "bcryptjs";
 import { z } from "zod";
 import { AppDataSource } from "../database/data-source";
@@ -58,11 +58,11 @@ function profilePayload(profile: AppUser) {
   };
 }
 
-function setRefreshCookie(res: Parameters<typeof authRouter.post>[2] extends never ? never : any, token: string) {
+function setRefreshCookie(res: Response, token: string) {
   res.cookie("korobo_refresh", token, refreshCookieOptions());
 }
 
-async function issueSession(profile: AppUser, res: any) {
+async function issueSession(profile: AppUser, res: Response) {
   const refreshToken = createRefreshToken();
   const session = AppDataSource.getRepository(AuthSession).create({
     userId: profile.id,
@@ -124,9 +124,9 @@ authRouter.post("/refresh", async (req, res, next) => {
   try {
     const sessionRepo = AppDataSource.getRepository(AuthSession);
     const session = await sessionRepo.findOne({
-      where: { refreshTokenHash: hashToken(rawToken), revokedAt: null }
+      where: { refreshTokenHash: hashToken(rawToken) }
     });
-    if (!session || session.expiresAt.getTime() <= Date.now()) {
+    if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) {
       if (session) {
         session.revokedAt = new Date();
         await sessionRepo.save(session);
