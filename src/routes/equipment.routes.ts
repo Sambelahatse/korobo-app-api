@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
+import { IsNull } from "typeorm";
 import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
 import { Equipment } from "../entities/Equipment";
@@ -113,7 +114,7 @@ equipmentRouter.get("/:id", async (req, res, next) => {
   if (!z.string().uuid().safeParse(req.params.id).success) { fail(res, 400, "EQUIPMENT_ID_INVALID", "Identifiant d’équipement invalide."); return; }
   try {
     const equipment = await AppDataSource.getRepository(Equipment).findOne({
-      where: { id: req.params.id, archivedAt: null }, relations: { site: true, assignedTo: true }
+      where: { id: req.params.id, archivedAt: IsNull() }, relations: { site: true, assignedTo: true }
     });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const [movements, maintenance] = await Promise.all([
@@ -151,7 +152,7 @@ equipmentRouter.post("/", async (req, res, next) => {
       ...input, brand: input.brand ?? null, model: input.model ?? null, serialNumber: input.serialNumber ?? null,
       assignedToId: input.assignedToId ?? null, installedAt: input.installedAt ?? null,
       lastMaintenanceAt: input.lastMaintenanceAt ?? null, nextMaintenanceAt: input.nextMaintenanceAt ?? null,
-      notes: input.notes ?? null, archivedAt: null,
+      notes: input.notes ?? null, archivedAt: IsNull(),
       availableQuantity: input.trackingMode === "individual" ? (input.assignedToId ? 0 : 1) : Math.max(0, input.quantity - (input.assignedToId ? input.quantity : 0)),
       assignedQuantity: input.assignedToId ? input.quantity : 0
     });
@@ -174,7 +175,7 @@ equipmentRouter.patch("/:id", async (req, res, next) => {
   if (!parsed.success || Object.keys(req.body ?? {}).length === 0) { fail(res, 400, "VALIDATION_ERROR", parsed.success ? "Aucune modification fournie." : parsed.error.issues[0]?.message ?? "Données invalides."); return; }
   try {
     const repo = AppDataSource.getRepository(Equipment);
-    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: null } });
+    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const input = parsed.data;
     if (input.siteId && !await AppDataSource.getRepository(Site).findOne({ where: { id: input.siteId } })) { fail(res, 400, "SITE_NOT_FOUND", "Le site sélectionné n’existe pas."); return; }
@@ -182,7 +183,22 @@ equipmentRouter.patch("/:id", async (req, res, next) => {
     if (equipment.trackingMode === "individual" && input.quantity !== undefined && input.quantity !== 1) { fail(res, 400, "INDIVIDUAL_QUANTITY_INVALID", "Un équipement individuel doit conserver une quantité égale à 1."); return; }
     const previousSiteId = equipment.siteId;
     const previousUserId = equipment.assignedToId;
-    repo.merge(equipment, input);
+    if (input.siteId !== undefined) equipment.siteId = input.siteId;
+    if (input.name !== undefined) equipment.name = input.name;
+    if (input.category !== undefined) equipment.category = input.category;
+    if (input.brand !== undefined) equipment.brand = input.brand;
+    if (input.model !== undefined) equipment.model = input.model;
+    if (input.serialNumber !== undefined) equipment.serialNumber = input.serialNumber;
+    if (input.trackingMode !== undefined) equipment.trackingMode = input.trackingMode;
+    if (input.quantity !== undefined) equipment.quantity = input.quantity;
+    if (input.unit !== undefined) equipment.unit = input.unit;
+    if (input.status !== undefined) equipment.status = input.status;
+    if (input.assignedToId !== undefined) equipment.assignedToId = input.assignedToId;
+    if (input.installedAt !== undefined) equipment.installedAt = input.installedAt;
+    if (input.lastMaintenanceAt !== undefined) equipment.lastMaintenanceAt = input.lastMaintenanceAt;
+    if (input.nextMaintenanceAt !== undefined) equipment.nextMaintenanceAt = input.nextMaintenanceAt;
+    if (input.specifications !== undefined) equipment.specifications = input.specifications;
+    if (input.notes !== undefined) equipment.notes = input.notes;
     if (equipment.trackingMode === "individual") {
       equipment.quantity = 1;
       equipment.assignedQuantity = equipment.assignedToId ? 1 : 0;
@@ -213,7 +229,7 @@ equipmentRouter.post("/:id/movements", async (req, res, next) => {
   try {
     await AppDataSource.transaction(async manager => {
       const repo = manager.getRepository(Equipment);
-      const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: null }, lock: { mode: "pessimistic_write" } });
+      const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() }, lock: { mode: "pessimistic_write" } });
       if (!equipment) throw Object.assign(new Error("Équipement introuvable."), { status: 404, code: "EQUIPMENT_NOT_FOUND" });
       const { type, quantity, toSiteId, toUserId, notes } = parsed.data;
       const amount = equipment.trackingMode === "individual" ? 1 : quantity;
@@ -274,7 +290,7 @@ equipmentRouter.post("/:id/maintenance", async (req, res, next) => {
   const parsed = maintenanceSchema.safeParse(req.body);
   if (!parsed.success) { fail(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Intervention invalide."); return; }
   try {
-    const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: req.params.id, archivedAt: null } });
+    const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const m = parsed.data;
     const rows = await AppDataSource.query(
@@ -311,7 +327,7 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
       [req.params.maintenanceId, merged.maintenanceType, merged.status, merged.priority, merged.title, merged.description ?? null,
         merged.diagnosis ?? null, merged.workPerformed ?? null, merged.cost ?? null, merged.scheduledAt ?? null, merged.nextDueAt ?? null, merged.assignedToId ?? null]
     );
-    const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: String(merged.equipment_id) } });
+    const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: String(existing[0]!.equipment_id) } });
     if (equipment && merged.status === "in_progress") equipment.status = "under_maintenance";
     if (equipment && merged.status === "completed") {
       equipment.status = "operational";
@@ -328,7 +344,7 @@ equipmentRouter.delete("/:id", async (req, res, next) => {
   if (!z.string().uuid().safeParse(req.params.id).success) { fail(res, 400, "EQUIPMENT_ID_INVALID", "Identifiant d’équipement invalide."); return; }
   try {
     const repo = AppDataSource.getRepository(Equipment);
-    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: null } });
+    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     equipment.archivedAt = new Date();
     await AppDataSource.transaction(async manager => {
