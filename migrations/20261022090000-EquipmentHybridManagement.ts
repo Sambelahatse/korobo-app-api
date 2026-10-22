@@ -19,7 +19,7 @@ export class EquipmentHybridManagement20261022090000 implements MigrationInterfa
         ELSE 'quantity'
       END,
       available_quantity = CASE
-        WHEN serial_number IS NOT NULL AND btrim(serial_number) <> '' THEN 0
+        WHEN serial_number IS NOT NULL AND btrim(serial_number) <> '' THEN 1
         ELSE GREATEST(quantity, 0)
       END,
       assigned_quantity = 0
