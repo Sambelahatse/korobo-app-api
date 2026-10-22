@@ -187,11 +187,11 @@ authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => 
 });
 
 authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next) => {
-  if (!z.string().uuid().safeParse(targetUserId).success) {
+  if (!z.string().uuid().safeParse(req.params.id).success) {
     res.status(400).json({ error: { code: "USER_ID_INVALID", message: "Identifiant utilisateur invalide." } });
     return;
   }
-  const targetUserId = targetUserId as string;
+  const targetUserId = req.params.id as string;
   const parsed = userManagementSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Les informations utilisateur fournies sont invalides." } });
