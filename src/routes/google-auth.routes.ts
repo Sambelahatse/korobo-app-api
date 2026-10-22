@@ -43,6 +43,26 @@ googleAuthRouter.get("/", (req, res) => {
   res.redirect(url.toString());
 });
 
+googleAuthRouter.post("/link-url", authenticate, (req, res) => {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_REDIRECT_URI) {
+    res.status(503).json({ error: { code: "GOOGLE_NOT_CONFIGURED", message: "La connexion Google n’est pas configurée." } });
+    return;
+  }
+  const state = jwt.sign(
+    { purpose: "google_oauth", flow: "link", userId: req.authProfile!.id, nonce: randomBytes(24).toString("base64url") },
+    oauthSecret(),
+    { expiresIn: "10m", issuer: "korobo-app-api", audience: "korobo-google-oauth" }
+  );
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
+  url.searchParams.set("redirect_uri", env.GOOGLE_REDIRECT_URI);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "openid email profile");
+  url.searchParams.set("state", state);
+  url.searchParams.set("prompt", "select_account");
+  res.json({ url: url.toString() });
+});
+
 googleAuthRouter.get("/link", authenticate, (req, res) => {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_REDIRECT_URI) {
     res.redirect(frontendRedirect({ google_error: "google_not_configured" }, "settings"));
@@ -70,7 +90,7 @@ googleAuthRouter.get("/callback", async (req, res) => {
   const cookieHeader = req.header("cookie") || "";
   const cookieState = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith("korobo_google_state="))?.slice("korobo_google_state=".length);
   res.setHeader("Set-Cookie", `korobo_google_state=; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=0${env.NODE_ENV === "production" ? "; Secure" : ""}`);
-  if (!code || !state || !cookieState || decodeURIComponent(cookieState) !== state || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) {
+  if (!code || !state || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) {
     res.redirect(frontendRedirect({ google_error: "google_callback_invalid" }));
     return;
   }
@@ -82,6 +102,12 @@ googleAuthRouter.get("/callback", async (req, res) => {
     });
     if (typeof claims === "string" || claims.purpose !== "google_oauth" || !claims.nonce) {
       res.redirect(frontendRedirect({ google_error: "google_state_invalid" }));
+      return;
+    }
+
+    const isLinkFlow = typeof claims === "object" && claims !== null && "flow" in claims && claims.flow === "link";
+    if (!isLinkFlow && (!cookieState || decodeURIComponent(cookieState) !== state)) {
+      res.redirect(frontendRedirect({ google_error: "google_callback_invalid" }));
       return;
     }
 
