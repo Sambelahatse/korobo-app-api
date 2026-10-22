@@ -85,7 +85,7 @@ authRouter.post("/invite", authenticate, requireAdmin, async (req, res, next) =>
   if (!parsed.success) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Enter a valid name, email, and allowed role." } }); return; }
   try {
     const email = parsed.data.email.toLowerCase(), repository = AppDataSource.getRepository(AppUser);
-    if (await repository.findOne({ where: { email } })) { res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "A user with this email already exists." } }); return; }
+    if (await repository.findOne({ where: { email } })) { res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "Un utilisateur avec cette adresse e-mail existe déjà." } }); return; }
     const profile = repository.create({ id: randomUUID(), fullName: parsed.data.fullName, email, role: parsed.data.role, phone: parsed.data.phone || null, isActive: false, passwordHash: null });
     await repository.save(profile);
     const token = await createOneTimeAction(profile.id, "invite", 72);
@@ -219,7 +219,7 @@ authRouter.post("/users", authenticate, requireAdmin, async (req, res, next) => 
     const email = parsed.data.email.toLowerCase();
     const repository = AppDataSource.getRepository(AppUser);
     if (await repository.findOne({ where: { email } })) {
-      res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "A user with this email already exists." } });
+      res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "Un utilisateur avec cette adresse e-mail existe déjà." } });
       return;
     }
     const profile = repository.create({
