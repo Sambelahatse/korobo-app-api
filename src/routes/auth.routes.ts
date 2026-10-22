@@ -187,10 +187,11 @@ authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => 
 });
 
 authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next) => {
-  if (!z.string().uuid().safeParse(req.params.id).success) {
+  if (!z.string().uuid().safeParse(targetUserId).success) {
     res.status(400).json({ error: { code: "USER_ID_INVALID", message: "Identifiant utilisateur invalide." } });
     return;
   }
+  const targetUserId = targetUserId as string;
   const parsed = userManagementSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Les informations utilisateur fournies sont invalides." } });
@@ -204,7 +205,7 @@ authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next
     try {
       await runner.query("SELECT pg_advisory_xact_lock($1)", [731904219]);
       const repository = runner.manager.getRepository(AppUser);
-      const user = await repository.findOne({ where: { id: req.params.id } });
+      const user = await repository.findOne({ where: { id: targetUserId } });
       if (!user) {
         await runner.rollbackTransaction();
         res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
