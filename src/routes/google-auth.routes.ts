@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { AppDataSource } from "../database/data-source";
@@ -25,8 +25,9 @@ googleAuthRouter.get("/", (_req, res) => {
     res.redirect(frontendRedirect({ google_error: "google_not_configured" }));
     return;
   }
+  const requestedFlow = req.query.flow === "register" ? "register" : "login";
   const state = jwt.sign(
-    { purpose: "google_oauth", nonce: randomBytes(24).toString("base64url") },
+    { purpose: "google_oauth", flow: requestedFlow, nonce: randomBytes(24).toString("base64url") },
     oauthSecret(),
     { expiresIn: "10m", issuer: "korobo-app-api", audience: "korobo-google-oauth" }
   );
@@ -89,12 +90,39 @@ googleAuthRouter.get("/callback", async (req, res) => {
     }
 
     if (!AppDataSource.isInitialized) throw new Error("Database unavailable");
-    const user = await AppDataSource.getRepository(AppUser)
+    const repository = AppDataSource.getRepository(AppUser);
+    let user = await repository
       .createQueryBuilder("user")
       .where("LOWER(user.email) = LOWER(:email)", { email })
       .getOne();
 
-    // Google verifies identity only. KOROBO account roles and access remain owned by Neon.
+    const flow = typeof claims === "object" && claims !== null && "flow" in claims && claims.flow === "register"
+      ? "register"
+      : "login";
+
+    // Existing accounts keep their Neon-owned roles. Public Google signup can never grant admin.
+    if (!user && flow === "register") {
+      const fullName = googleProfile.name?.trim().slice(0, 160) || email.split("@")[0].slice(0, 160);
+      try {
+        user = repository.create({
+          id: randomUUID(),
+          fullName,
+          email,
+          passwordHash: null,
+          role: "technician",
+          phone: null,
+          isActive: true
+        });
+        user = await repository.save(user);
+      } catch (creationError) {
+        // If two signup callbacks race, reuse the account created by the other request.
+        user = await repository.createQueryBuilder("user")
+          .where("LOWER(user.email) = LOWER(:email)", { email })
+          .getOne();
+        if (!user) throw creationError;
+      }
+    }
+
     if (!user || !user.isActive) {
       res.redirect(frontendRedirect({ google_error: "google_account_not_allowed" }));
       return;
