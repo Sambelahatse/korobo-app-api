@@ -20,7 +20,7 @@ function oauthSecret(): string {
   return env.JWT_SECRET;
 }
 
-googleAuthRouter.get("/", (_req, res) => {
+googleAuthRouter.get("/", (req, res) => {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_REDIRECT_URI) {
     res.redirect(frontendRedirect({ google_error: "google_not_configured" }));
     return;
@@ -102,7 +102,7 @@ googleAuthRouter.get("/callback", async (req, res) => {
 
     // Existing accounts keep their Neon-owned roles. Public Google signup can never grant admin.
     if (!user && flow === "register") {
-      const fullName = googleProfile.name?.trim().slice(0, 160) || email.split("@")[0].slice(0, 160);
+      const fullName = googleProfile.name?.trim().slice(0, 160) || (email.split("@")[0] || "KOROBO user").slice(0, 160);
       try {
         user = repository.create({
           id: randomUUID(),
