@@ -151,7 +151,7 @@ equipmentRouter.post("/", async (req, res, next) => {
       ...input, brand: input.brand ?? null, model: input.model ?? null, serialNumber: input.serialNumber ?? null,
       assignedToId: input.assignedToId ?? null, installedAt: input.installedAt ?? null,
       lastMaintenanceAt: input.lastMaintenanceAt ?? null, nextMaintenanceAt: input.nextMaintenanceAt ?? null,
-      notes: input.notes ?? null, archivedAt: IsNull(),
+      notes: input.notes ?? null, archivedAt: null,
       availableQuantity: input.trackingMode === "individual" ? (input.assignedToId ? 0 : 1) : Math.max(0, input.quantity - (input.assignedToId ? input.quantity : 0)),
       assignedQuantity: input.assignedToId ? input.quantity : 0
     });
