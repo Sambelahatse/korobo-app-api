@@ -32,7 +32,14 @@ Apply the additive authentication schema before deploying the new authentication
 
 ## Authentication
 
-The API manages email/password sign-in, first-owner bootstrap, invitations, password reset/change, and JWT verification for REST and Socket.IO. Configure `JWT_SECRET` with at least 32 random characters and configure SMTP variables to send invitations and reset links. Configure `FRONTEND_URL` to the deployed frontend origin.
+The API manages email/password sign-in, Google OAuth, first-owner bootstrap, invitations, password reset/change, and JWT verification for REST and Socket.IO. Configure `JWT_SECRET` with at least 32 random characters and configure SMTP variables to send invitations and reset links. Configure `FRONTEND_URL` to the deployed frontend origin.
+
+For Google sign-in, create an OAuth 2.0 **Web application** client in Google Cloud Console and set:
+- `GOOGLE_CLIENT_ID`: OAuth client ID
+- `GOOGLE_CLIENT_SECRET`: OAuth client secret (API only; never expose it to the frontend)
+- `GOOGLE_REDIRECT_URI`: exact callback URL, for example `https://YOUR_API_HOST/auth/google/callback`
+
+Add that exact URL under **Authorized redirect URIs** in Google Cloud Console. The login button starts at `GET /auth/google`. Google verifies the identity, but the API only signs in an already-existing, active KOROBO user whose Neon email matches Google's verified email. Roles and profile data continue to come from Neon; Google sign-in does not create users or grant roles.
 
 The first owner is created via `POST /auth/bootstrap-owner` with `OWNER_BOOTSTRAP_TOKEN`. Remove that token after the first owner is created. Invitations and password resets require SMTP.
 
