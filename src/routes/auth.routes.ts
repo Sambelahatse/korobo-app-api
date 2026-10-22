@@ -209,6 +209,41 @@ const userManagementSchema = z.object({
   isActive: z.boolean().optional()
 }).refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });
 
+authRouter.post("/users", authenticate, requireAdmin, async (req, res, next) => {
+  const parsed = inviteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Enter a valid name, email, and allowed role." } });
+    return;
+  }
+  try {
+    const email = parsed.data.email.toLowerCase();
+    const repository = AppDataSource.getRepository(AppUser);
+    if (await repository.findOne({ where: { email } })) {
+      res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "A user with this email already exists." } });
+      return;
+    }
+    const profile = repository.create({
+      id: randomUUID(),
+      fullName: parsed.data.fullName,
+      email,
+      role: parsed.data.role,
+      phone: parsed.data.phone || null,
+      isActive: false,
+      passwordHash: null
+    });
+    await repository.save(profile);
+    const token = await createOneTimeAction(profile.id, "invite", 72);
+    const link = new URL("/#/reset-password", env.FRONTEND_URL);
+    link.searchParams.set("token", token);
+    // Account creation only prepares an activation link. Email is sent only on an explicit resend action.
+    res.status(201).json({
+      data: profilePayload(profile),
+      activationLink: link.toString(),
+      message: "Compte créé. Partagez le lien d’activation avec l’utilisateur."
+    });
+  } catch (error) { next(error); }
+});
+
 authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => {
   try {
     const users = await AppDataSource.getRepository(AppUser).createQueryBuilder("user")
