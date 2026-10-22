@@ -84,6 +84,7 @@ equipmentRouter.get("/", async (req, res, next) => {
     const repo = AppDataSource.getRepository(Equipment);
     const qb = repo.createQueryBuilder("equipment")
       .leftJoinAndSelect("equipment.site", "site")
+      .andWhere("equipment.companyId = :companyId", { companyId: req.authProfile!.companyId })
       .leftJoinAndSelect("equipment.assignedTo", "assignedTo")
       .where("equipment.archivedAt IS NULL");
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
@@ -99,11 +100,11 @@ equipmentRouter.get("/", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-equipmentRouter.get("/lookups", async (_req, res, next) => {
+equipmentRouter.get("/lookups", async (req, res, next) => {
   try {
     const [sites, users] = await Promise.all([
-      AppDataSource.getRepository(Site).find({ select: { id: true, name: true }, order: { name: "ASC" } }),
-      AppDataSource.getRepository(AppUser).find({ where: { isActive: true }, select: { id: true, fullName: true, email: true, role: true }, order: { fullName: "ASC" } })
+      AppDataSource.getRepository(Site).find({ where: { companyId: req.authProfile!.companyId }, select: { id: true, name: true }, order: { name: "ASC" } }),
+      AppDataSource.getRepository(AppUser).find({ where: { isActive: true, companyId: req.authProfile!.companyId }, select: { id: true, fullName: true, email: true, role: true }, order: { fullName: "ASC" } })
     ]);
     res.json({ data: { sites, users } });
   } catch (error) { next(error); }
@@ -113,7 +114,7 @@ equipmentRouter.get("/:id", async (req, res, next) => {
   if (!z.string().uuid().safeParse(req.params.id).success) { fail(res, 400, "EQUIPMENT_ID_INVALID", "Identifiant d’équipement invalide."); return; }
   try {
     const equipment = await AppDataSource.getRepository(Equipment).findOne({
-      where: { id: req.params.id, archivedAt: IsNull() }, relations: { site: true, assignedTo: true }
+      where: { id: req.params.id, companyId: req.authProfile!.companyId, archivedAt: IsNull() }, relations: { site: true, assignedTo: true }
     });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const [movements, maintenance] = await Promise.all([
@@ -125,12 +126,12 @@ equipmentRouter.get("/:id", async (req, res, next) => {
         LEFT JOIN public.sites fs ON fs.id=m.from_site_id
         LEFT JOIN public.sites ts ON ts.id=m.to_site_id
         LEFT JOIN public.app_users creator ON creator.id=m.created_by
-        WHERE m.equipment_id=$1 ORDER BY m.created_at DESC LIMIT 200`, [equipment.id]),
+        WHERE m.equipment_id=$1 AND EXISTS (SELECT 1 FROM public.equipment e WHERE e.id=m.equipment_id AND e.company_id=$2) ORDER BY m.created_at DESC LIMIT 200`, [equipment.id, req.authProfile!.companyId]),
       AppDataSource.query(`SELECT m.*, u.full_name AS assigned_to_name, creator.full_name AS created_by_name
         FROM public.equipment_maintenance m
         LEFT JOIN public.app_users u ON u.id=m.assigned_to
         LEFT JOIN public.app_users creator ON creator.id=m.created_by
-        WHERE m.equipment_id=$1 ORDER BY m.created_at DESC LIMIT 100`, [equipment.id])
+        WHERE m.equipment_id=$1 AND EXISTS (SELECT 1 FROM public.equipment e WHERE e.id=m.equipment_id AND e.company_id=$2) ORDER BY m.created_at DESC LIMIT 100`, [equipment.id, req.authProfile!.companyId])
     ]);
     res.json({ data: { ...equipment, movements, maintenance } });
   } catch (error) { next(error); }
@@ -142,13 +143,13 @@ equipmentRouter.post("/", async (req, res, next) => {
   if (!parsed.success) { fail(res, 400, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Vérifiez les informations de l’équipement."); return; }
   const input = parsed.data;
   try {
-    const site = await AppDataSource.getRepository(Site).findOne({ where: { id: input.siteId } });
+    const site = await AppDataSource.getRepository(Site).findOne({ where: { id: input.siteId, companyId: req.authProfile!.companyId } });
     if (!site) { fail(res, 400, "SITE_NOT_FOUND", "Le site sélectionné n’existe pas."); return; }
-    if (input.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: input.assignedToId, isActive: true } })) {
+    if (input.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: input.assignedToId, isActive: true, companyId: req.authProfile!.companyId } })) {
       fail(res, 400, "ASSIGNEE_NOT_FOUND", "L’utilisateur affecté est introuvable ou inactif."); return;
     }
     const equipment = AppDataSource.getRepository(Equipment).create({
-      ...input, brand: input.brand ?? null, model: input.model ?? null, serialNumber: input.serialNumber ?? null,
+      ...input, companyId: req.authProfile!.companyId, brand: input.brand ?? null, model: input.model ?? null, serialNumber: input.serialNumber ?? null,
       assignedToId: input.assignedToId ?? null, installedAt: input.installedAt ?? null,
       lastMaintenanceAt: input.lastMaintenanceAt ?? null, nextMaintenanceAt: input.nextMaintenanceAt ?? null,
       notes: input.notes ?? null, archivedAt: null,
@@ -163,7 +164,7 @@ equipmentRouter.post("/", async (req, res, next) => {
         [equipment.id, input.quantity, input.siteId, input.assignedToId ?? null, "Création de l’équipement", req.authProfile!.id]
       );
     });
-    res.status(201).json({ data: await AppDataSource.getRepository(Equipment).findOne({ where: { id: equipment.id }, relations: { site: true, assignedTo: true } }) });
+    res.status(201).json({ data: await AppDataSource.getRepository(Equipment).findOne({ where: { id: equipment.id, companyId: req.authProfile!.companyId }, relations: { site: true, assignedTo: true } }) });
   } catch (error) { next(error); }
 });
 
@@ -174,10 +175,10 @@ equipmentRouter.patch("/:id", async (req, res, next) => {
   if (!parsed.success || Object.keys(req.body ?? {}).length === 0) { fail(res, 400, "VALIDATION_ERROR", parsed.success ? "Aucune modification fournie." : parsed.error.issues[0]?.message ?? "Données invalides."); return; }
   try {
     const repo = AppDataSource.getRepository(Equipment);
-    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
+    const equipment = await repo.findOne({ where: { id: req.params.id, companyId: req.authProfile!.companyId, archivedAt: IsNull() } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const input = parsed.data;
-    if (input.siteId && !await AppDataSource.getRepository(Site).findOne({ where: { id: input.siteId } })) { fail(res, 400, "SITE_NOT_FOUND", "Le site sélectionné n’existe pas."); return; }
+    if (input.siteId && !await AppDataSource.getRepository(Site).findOne({ where: { id: input.siteId, companyId: req.authProfile!.companyId } })) { fail(res, 400, "SITE_NOT_FOUND", "Le site sélectionné n’existe pas."); return; }
     if (input.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: input.assignedToId, isActive: true } })) { fail(res, 400, "ASSIGNEE_NOT_FOUND", "L’utilisateur affecté est introuvable ou inactif."); return; }
     if (equipment.trackingMode === "individual" && input.quantity !== undefined && input.quantity !== 1) { fail(res, 400, "INDIVIDUAL_QUANTITY_INVALID", "Un équipement individuel doit conserver une quantité égale à 1."); return; }
     const previousSiteId = equipment.siteId;
@@ -228,7 +229,7 @@ equipmentRouter.post("/:id/movements", async (req, res, next) => {
   try {
     await AppDataSource.transaction(async manager => {
       const repo = manager.getRepository(Equipment);
-      const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() }, lock: { mode: "pessimistic_write" } });
+      const equipment = await repo.findOne({ where: { id: req.params.id, companyId: req.authProfile!.companyId, archivedAt: IsNull() }, lock: { mode: "pessimistic_write" } });
       if (!equipment) throw Object.assign(new Error("Équipement introuvable."), { status: 404, code: "EQUIPMENT_NOT_FOUND" });
       const { type, quantity, toSiteId, toUserId, notes } = parsed.data;
       const amount = equipment.trackingMode === "individual" ? 1 : quantity;
@@ -242,7 +243,7 @@ equipmentRouter.post("/:id/movements", async (req, res, next) => {
         equipment.quantity -= amount; equipment.availableQuantity -= amount;
       } else if (type === "assign") {
         if (equipment.availableQuantity < amount || !toUserId) throw Object.assign(new Error("Quantité disponible insuffisante ou utilisateur manquant."), { status: 409, code: "ASSIGNMENT_INVALID" });
-        const user = await manager.getRepository(AppUser).findOne({ where: { id: toUserId, isActive: true } });
+        const user = await manager.getRepository(AppUser).findOne({ where: { id: toUserId, isActive: true, companyId: req.authProfile!.companyId } });
         if (!user) throw Object.assign(new Error("L’utilisateur affecté est introuvable ou inactif."), { status: 400, code: "ASSIGNEE_NOT_FOUND" });
         if (equipment.trackingMode === "individual" && equipment.assignedToId) throw Object.assign(new Error("Cet équipement est déjà affecté."), { status: 409, code: "ALREADY_ASSIGNED" });
         equipment.availableQuantity -= amount; equipment.assignedQuantity += amount;
@@ -253,7 +254,7 @@ equipmentRouter.post("/:id/movements", async (req, res, next) => {
         if (equipment.trackingMode === "individual") equipment.assignedToId = null;
       } else if (type === "transfer") {
         if (!toSiteId) throw Object.assign(new Error("Sélectionnez le site de destination."), { status: 400, code: "DESTINATION_REQUIRED" });
-        if (!await manager.getRepository(Site).findOne({ where: { id: toSiteId } })) throw Object.assign(new Error("Le site de destination n’existe pas."), { status: 400, code: "SITE_NOT_FOUND" });
+        if (!await manager.getRepository(Site).findOne({ where: { id: toSiteId, companyId: req.authProfile!.companyId } })) throw Object.assign(new Error("Le site de destination n’existe pas."), { status: 400, code: "SITE_NOT_FOUND" });
         equipment.siteId = toSiteId;
       }
       await manager.save(Equipment, equipment);
@@ -276,8 +277,8 @@ equipmentRouter.get("/:id/maintenance", async (req, res, next) => {
   try {
     const data = await AppDataSource.query(
       `SELECT m.*, u.full_name AS assigned_to_name FROM public.equipment_maintenance m
-       LEFT JOIN public.app_users u ON u.id=m.assigned_to WHERE m.equipment_id=$1 ORDER BY m.created_at DESC`,
-      [req.params.id]
+       LEFT JOIN public.app_users u ON u.id=m.assigned_to WHERE m.equipment_id=$1 AND EXISTS (SELECT 1 FROM public.equipment e WHERE e.id=m.equipment_id AND e.company_id=$2) ORDER BY m.created_at DESC`,
+      [req.params.id, req.authProfile!.companyId]
     );
     res.json({ data });
   } catch (error) { next(error); }
@@ -315,7 +316,7 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
   const parsed = maintenanceSchema.partial().safeParse(req.body);
   if (!parsed.success || Object.keys(req.body ?? {}).length === 0) { fail(res, 400, "VALIDATION_ERROR", parsed.success ? "Aucune modification fournie." : parsed.error.issues[0]?.message ?? "Intervention invalide."); return; }
   try {
-    const existing = await AppDataSource.query("SELECT * FROM public.equipment_maintenance WHERE id=$1 LIMIT 1", [req.params.maintenanceId]) as Array<Record<string, unknown>>;
+    const existing = await AppDataSource.query("SELECT m.* FROM public.equipment_maintenance m JOIN public.equipment e ON e.id=m.equipment_id WHERE m.id=$1 AND e.company_id=$2 LIMIT 1", [req.params.maintenanceId, req.authProfile!.companyId]) as Array<Record<string, unknown>>;
     if (!existing.length) { fail(res, 404, "MAINTENANCE_NOT_FOUND", "Intervention introuvable."); return; }
     const current = existing[0]!;
     const patch = parsed.data;
@@ -337,11 +338,11 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
       `UPDATE public.equipment_maintenance SET maintenance_type=$2,status=$3,priority=$4,title=$5,description=$6,diagnosis=$7,work_performed=$8,cost=$9,scheduled_at=$10,next_due_at=$11,assigned_to=$12,
        started_at=CASE WHEN $3='in_progress' THEN COALESCE(started_at,now()) ELSE started_at END,
        completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END, updated_at=now()
-       WHERE id=$1 RETURNING *`,
+       WHERE id=$1 AND EXISTS (SELECT 1 FROM public.equipment e WHERE e.id=public.equipment_maintenance.equipment_id AND e.company_id=$14) RETURNING *`,
       [req.params.maintenanceId, merged.maintenanceType, merged.status, merged.priority, merged.title, merged.description ?? null,
-        merged.diagnosis ?? null, merged.workPerformed ?? null, merged.cost ?? null, merged.scheduledAt ?? null, merged.nextDueAt ?? null, merged.assignedToId ?? null]
+        merged.diagnosis ?? null, merged.workPerformed ?? null, merged.cost ?? null, merged.scheduledAt ?? null, merged.nextDueAt ?? null, merged.assignedToId ?? null, req.authProfile!.companyId]
     );
-    const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: String(existing[0]!.equipment_id) } });
+    const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: String(existing[0]!.equipment_id), companyId: req.authProfile!.companyId } });
     if (equipment && merged.status === "in_progress") equipment.status = "under_maintenance";
     if (equipment && merged.status === "completed") {
       equipment.status = "operational";
@@ -368,7 +369,7 @@ equipmentRouter.delete("/:id", async (req, res, next) => {
   if (!z.string().uuid().safeParse(req.params.id).success) { fail(res, 400, "EQUIPMENT_ID_INVALID", "Identifiant d’équipement invalide."); return; }
   try {
     const repo = AppDataSource.getRepository(Equipment);
-    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
+    const equipment = await repo.findOne({ where: { id: req.params.id, companyId: req.authProfile!.companyId, archivedAt: IsNull() } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     equipment.archivedAt = new Date();
     await AppDataSource.transaction(async manager => {
