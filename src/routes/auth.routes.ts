@@ -126,6 +126,22 @@ authRouter.post("/password/reset", async (req, res, next) => {
     res.status(200).json({ message: "Password updated. You can now sign in." });
   } catch (error) { next(error); }
 });
+authRouter.post("/password/set", authenticate, async (req, res, next) => {
+  const parsed = z.object({ password: z.string().min(12).max(128) }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Use a password of at least 12 characters." } }); return; }
+  try {
+    const repository = AppDataSource.getRepository(AppUser);
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: req.authProfile!.id }).getOne();
+    if (!user) { res.status(404).json({ error: { code: "ACCOUNT_NOT_FOUND", message: "Account not found." } }); return; }
+    if (user.passwordHash) { res.status(409).json({ error: { code: "PASSWORD_ALREADY_SET", message: "Use the change-password endpoint for an existing password." } }); return; }
+    user.passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    await repository.save(user);
+    const token = req.header("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+    const claims = token ? verifyAccessToken(token) : null;
+    await AppDataSource.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND token_id <> $2", [user.id, claims?.jti || ""]);
+    res.status(200).json({ message: "Password configured. Other sessions have been signed out." });
+  } catch (error) { next(error); }
+});
 authRouter.post("/password/change", authenticate, async (req, res, next) => {
   const parsed = z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(12).max(128) }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Enter your current password and a new password of at least 12 characters." } }); return; }
