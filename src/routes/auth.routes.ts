@@ -65,7 +65,7 @@ authRouter.post("/register", async (req, res, next) => {
     const input = parsed.data;
     const company = runner.manager.create(Company, {
       name: input.companyName,
-      slug: input.companyName.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase()
+      slug: input.companyName.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()
         .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 55) + "-" + randomUUID().slice(0, 8),
       ownerUserId: null
     });
