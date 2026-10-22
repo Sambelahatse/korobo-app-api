@@ -30,6 +30,9 @@ export class Equipment {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
+  @Column({ name: "company_id", type: "uuid" })
+  companyId!: string;
+
   @Column({ name: "site_id", type: "uuid" })
   siteId!: string;
 
