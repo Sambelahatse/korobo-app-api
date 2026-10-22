@@ -317,7 +317,22 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
   try {
     const existing = await AppDataSource.query("SELECT * FROM public.equipment_maintenance WHERE id=$1 LIMIT 1", [req.params.maintenanceId]) as Array<Record<string, unknown>>;
     if (!existing.length) { fail(res, 404, "MAINTENANCE_NOT_FOUND", "Intervention introuvable."); return; }
-    const merged = { ...existing[0], ...parsed.data };
+    const current = existing[0]!;
+    const patch = parsed.data;
+    const merged = {
+      equipment_id: current.equipment_id,
+      maintenanceType: patch.maintenanceType ?? current.maintenance_type,
+      status: patch.status ?? current.status,
+      priority: patch.priority ?? current.priority,
+      title: patch.title ?? current.title,
+      description: patch.description !== undefined ? patch.description : current.description,
+      diagnosis: patch.diagnosis !== undefined ? patch.diagnosis : current.diagnosis,
+      workPerformed: patch.workPerformed !== undefined ? patch.workPerformed : current.work_performed,
+      cost: patch.cost !== undefined ? patch.cost : current.cost,
+      scheduledAt: patch.scheduledAt !== undefined ? patch.scheduledAt : current.scheduled_at,
+      nextDueAt: patch.nextDueAt !== undefined ? patch.nextDueAt : current.next_due_at,
+      assignedToId: patch.assignedToId !== undefined ? patch.assignedToId : current.assigned_to
+    };
     const rows = await AppDataSource.query(
       `UPDATE public.equipment_maintenance SET maintenance_type=$2,status=$3,priority=$4,title=$5,description=$6,diagnosis=$7,work_performed=$8,cost=$9,scheduled_at=$10,next_due_at=$11,assigned_to=$12,
        started_at=CASE WHEN $3='in_progress' THEN COALESCE(started_at,now()) ELSE started_at END,
