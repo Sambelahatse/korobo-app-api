@@ -325,7 +325,7 @@ authRouter.post("/users", authenticate, requireAdmin, async (req, res, next) => 
   } catch (error) { next(error); }
 });
 
-authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => {
+authRouter.get("/users", authenticate, requireAdmin, async (req, res, next) => {
   try {
     const users = await AppDataSource.getRepository(AppUser).createQueryBuilder("user")
       .select(["user.id", "user.fullName", "user.email", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
