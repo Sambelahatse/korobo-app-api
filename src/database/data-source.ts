@@ -26,7 +26,7 @@ export const AppDataSource = new DataSource({
     : false,
   entities: [AppUser, Site, Equipment, Planification, Rapport],
   migrations: ["migrations/*.{ts,js}"],
-  synchronize: false,
+  synchronize: true,
   migrationsRun: false,
   logging: env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   applicationName: "korobo-app-api"
