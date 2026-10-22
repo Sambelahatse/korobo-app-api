@@ -168,6 +168,7 @@ authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => 
   try {
     const users = await AppDataSource.getRepository(AppUser).createQueryBuilder("user")
       .select(["user.id", "user.fullName", "user.email", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
+      .addSelect("user.passwordHash")
       .orderBy("user.createdAt", "DESC")
       .getMany();
     const activity = await AppDataSource.query(
@@ -179,7 +180,8 @@ authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => 
       ...profilePayload(user),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
-      lastSeenAt: lastSeen.get(user.id) ?? null
+      lastSeenAt: lastSeen.get(user.id) ?? null,
+      hasPassword: Boolean(user.passwordHash)
     })) });
   } catch (error) { next(error); }
 });
