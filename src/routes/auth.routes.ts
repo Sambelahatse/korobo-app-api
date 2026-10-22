@@ -7,7 +7,7 @@ import { AppDataSource } from "../database/data-source";
 import { AppUser, type AppUserRole } from "../entities/AppUser";
 import { env } from "../config/env";
 import { authenticate, requireAdmin } from "../middleware/authenticate";
-import { createOneTimeToken, hashToken, issueAccessToken } from "../services/auth";
+import { createOneTimeToken, hashToken, issueAccessToken, verifyAccessToken } from "../services/auth";
 import { sendAccountEmail } from "../services/email";
 
 export const authRouter = Router();
@@ -24,8 +24,16 @@ function tokenMatches(candidate: string | undefined, expected: string | undefine
 function profilePayload(profile: AppUser) {
   return { id: profile.id, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive };
 }
-function issueSession(profile: AppUser) {
-  return { data: profilePayload(profile), accessToken: issueAccessToken({ id: profile.id, email: profile.email }), tokenType: "Bearer", expiresIn: env.JWT_EXPIRES_IN };
+async function issueSession(profile: AppUser, req: import("express").Request) {
+  const accessToken = issueAccessToken({ id: profile.id, email: profile.email });
+  const claims = verifyAccessToken(accessToken);
+  if (claims.jti && claims.exp) {
+    await AppDataSource.query(
+      "INSERT INTO public.auth_sessions (user_id, token_id, expires_at, user_agent, ip_address) VALUES ($1, $2, to_timestamp($3), $4, $5)",
+      [profile.id, claims.jti, claims.exp, req.get("user-agent") || null, req.ip || null]
+    );
+  }
+  return { data: profilePayload(profile), accessToken, tokenType: "Bearer", expiresIn: env.JWT_EXPIRES_IN };
 }
 async function createOneTimeAction(userId: string, purpose: "invite" | "password_reset", ttlHours: number) {
   const token = createOneTimeToken();
@@ -44,7 +52,7 @@ authRouter.post("/bootstrap-owner", async (req, res, next) => {
     const input = parsed.data;
     const profile = runner.manager.create(AppUser, { id: randomUUID(), fullName: input.fullName, email: input.email.toLowerCase(), passwordHash: await bcrypt.hash(input.password, 12), role: "admin" satisfies AppUserRole, phone: input.phone || null, isActive: true });
     await runner.manager.save(AppUser, profile); await runner.commitTransaction();
-    res.status(201).json({ ...issueSession(profile), message: "Owner account created. Remove OWNER_BOOTSTRAP_TOKEN from the API environment now." });
+    res.status(201).json({ ...await issueSession(profile, req), message: "Owner account created. Remove OWNER_BOOTSTRAP_TOKEN from the API environment now." });
   } catch (error) { if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined); next(error); }
   finally { await runner.release(); }
 });
@@ -55,10 +63,22 @@ authRouter.post("/login", async (req, res, next) => {
     if (!AppDataSource.isInitialized) throw new Error("Database is unavailable");
     const profile = await AppDataSource.getRepository(AppUser).createQueryBuilder("user").addSelect("user.passwordHash").where("LOWER(user.email) = LOWER(:email)", { email: parsed.data.email }).getOne();
     if (!profile || !profile.isActive || !profile.passwordHash || !(await bcrypt.compare(parsed.data.password, profile.passwordHash))) { res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Adresse e-mail ou mot de passe incorrect." } }); return; }
-    res.status(200).json(issueSession(profile));
+    res.status(200).json(await issueSession(profile, req));
   } catch (error) { next(error); }
 });
-authRouter.post("/logout", (_req, res) => { res.status(204).end(); });
+authRouter.post("/logout", authenticate, async (req, res, next) => {
+  try {
+    const token = req.header("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+    if (token) {
+      const claims = verifyAccessToken(token);
+      if (claims.jti) await AppDataSource.query(
+        "UPDATE public.auth_sessions SET revoked_at = now() WHERE token_id = $1 AND user_id = $2 AND revoked_at IS NULL",
+        [claims.jti, req.authProfile!.id]
+      );
+    }
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
 authRouter.get("/me", authenticate, (req, res) => { res.status(200).json({ data: profilePayload(req.authProfile!) }); });
 authRouter.post("/invite", authenticate, requireAdmin, async (req, res, next) => {
   const parsed = inviteSchema.safeParse(req.body);
@@ -101,8 +121,25 @@ authRouter.post("/password/reset", async (req, res, next) => {
     await AppDataSource.transaction(async manager => {
       await manager.query("UPDATE public.app_users SET password_hash = $1, is_active = true, updated_at = now() WHERE id = $2", [passwordHash, record.user_id]);
       await manager.query("UPDATE public.auth_tokens SET used_at = now() WHERE id = $1 OR (user_id = $2 AND purpose = $3 AND used_at IS NULL)", [record.id, record.user_id, record.purpose]);
+      await manager.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [record.user_id]);
     });
     res.status(200).json({ message: "Password updated. You can now sign in." });
+  } catch (error) { next(error); }
+});
+authRouter.post("/password/set", authenticate, async (req, res, next) => {
+  const parsed = z.object({ password: z.string().min(12).max(128) }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Use a password of at least 12 characters." } }); return; }
+  try {
+    const repository = AppDataSource.getRepository(AppUser);
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: req.authProfile!.id }).getOne();
+    if (!user) { res.status(404).json({ error: { code: "ACCOUNT_NOT_FOUND", message: "Account not found." } }); return; }
+    if (user.passwordHash) { res.status(409).json({ error: { code: "PASSWORD_ALREADY_SET", message: "Use the change-password endpoint for an existing password." } }); return; }
+    user.passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    await repository.save(user);
+    const token = req.header("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+    const claims = token ? verifyAccessToken(token) : null;
+    await AppDataSource.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND token_id <> $2", [user.id, claims?.jti || ""]);
+    res.status(200).json({ message: "Password configured. Other sessions have been signed out." });
   } catch (error) { next(error); }
 });
 authRouter.post("/password/change", authenticate, async (req, res, next) => {
@@ -112,6 +149,9 @@ authRouter.post("/password/change", authenticate, async (req, res, next) => {
     const user = await AppDataSource.getRepository(AppUser).createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: req.authProfile!.id }).getOne();
     if (!user?.passwordHash || !(await bcrypt.compare(parsed.data.currentPassword, user.passwordHash))) { res.status(400).json({ error: { code: "CURRENT_PASSWORD_INVALID", message: "The current password is incorrect." } }); return; }
     user.passwordHash = await bcrypt.hash(parsed.data.newPassword, 12); await AppDataSource.getRepository(AppUser).save(user);
-    res.status(200).json({ message: "Password changed." });
+    const token = req.header("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+    const claims = token ? verifyAccessToken(token) : null;
+    await AppDataSource.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND token_id <> $2", [user.id, claims?.jti || ""]);
+    res.status(200).json({ message: "Password changed. Other sessions have been signed out." });
   } catch (error) { next(error); }
 });

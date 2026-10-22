@@ -1,8 +1,8 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 
-export type AccessClaims = { sub: string; email: string; type: "access" };
+export type AccessClaims = { sub: string; email: string; type: "access"; jti?: string; exp?: number };
 
 function secret(): string {
   if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) {
@@ -13,6 +13,7 @@ function secret(): string {
 
 export function issueAccessToken(user: { id: string; email: string }): string {
   return jwt.sign({ email: user.email, type: "access" }, secret(), {
+    jwtid: randomUUID(),
     subject: user.id,
     expiresIn: env.JWT_EXPIRES_IN as NonNullable<jwt.SignOptions["expiresIn"]>,
     issuer: "korobo-app-api",

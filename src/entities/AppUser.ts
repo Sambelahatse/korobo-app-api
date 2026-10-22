@@ -26,6 +26,9 @@ export class AppUser {
   @Column({ name: "password_hash", type: "varchar", length: 255, nullable: true, select: false })
   passwordHash!: string | null;
 
+  @Column({ name: "google_sub", type: "varchar", length: 255, nullable: true, unique: true })
+  googleSub!: string | null;
+
   @Column({ type: "varchar", length: 40, default: "technician" })
   role!: AppUserRole;
 
