@@ -3,12 +3,15 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn
 } from "typeorm";
 import type { Relation } from "typeorm";
 import { Equipment } from "./Equipment";
+import { Company } from "./Company";
 import { Planification } from "./Planification";
 import { Rapport } from "./Rapport";
 
@@ -20,6 +23,13 @@ export type SiteStatus = "active" | "inactive" | "maintenance" | "terminated";
 export class Site {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
+
+  @Column({ name: "company_id", type: "uuid" })
+  companyId!: string;
+
+  @ManyToOne(() => Company, { onDelete: "RESTRICT" })
+  @JoinColumn({ name: "company_id" })
+  company!: Relation<Company>;
 
   @Column({ name: "case_number", type: "varchar", length: 80, nullable: true })
   caseNumber!: string | null;

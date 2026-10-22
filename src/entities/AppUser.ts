@@ -2,12 +2,15 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  ManyToOne,
+  JoinColumn,
   OneToMany,
   PrimaryColumn,
   UpdateDateColumn
 } from "typeorm";
 import type { Relation } from "typeorm";
 import { Planification } from "./Planification";
+import { Company } from "./Company";
 import { Rapport } from "./Rapport";
 
 export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
@@ -16,6 +19,9 @@ export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
 export class AppUser {
   @PrimaryColumn("uuid")
   id!: string;
+
+  @Column({ name: "company_id", type: "uuid" })
+  companyId!: string;
 
   @Column({ name: "full_name", type: "varchar", length: 160 })
   fullName!: string;
@@ -43,6 +49,10 @@ export class AppUser {
 
   @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
   updatedAt!: Date;
+
+  @ManyToOne(() => Company, { onDelete: "RESTRICT" })
+  @JoinColumn({ name: "company_id" })
+  company!: Relation<Company>;
 
   @OneToMany(() => Planification, (planification) => planification.assignedTo)
   assignedPlanifications!: Relation<Planification[]>;
