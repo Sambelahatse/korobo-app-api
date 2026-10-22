@@ -88,12 +88,57 @@ authRouter.post("/invite", authenticate, requireAdmin, async (req, res, next) =>
     if (await repository.findOne({ where: { email } })) { res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "A user with this email already exists." } }); return; }
     const profile = repository.create({ id: randomUUID(), fullName: parsed.data.fullName, email, role: parsed.data.role, phone: parsed.data.phone || null, isActive: false, passwordHash: null });
     await repository.save(profile);
+    const token = await createOneTimeAction(profile.id, "invite", 72);
+    const link = new URL("/#/reset-password", env.FRONTEND_URL); link.searchParams.set("token", token);
+    let emailSent = false;
     try {
-      const token = await createOneTimeAction(profile.id, "invite", 72);
-      const link = new URL("/#/reset-password", env.FRONTEND_URL); link.searchParams.set("token", token);
       await sendAccountEmail(email, "Invitation à rejoindre KOROBO", "Votre compte KOROBO vous attend", "Choisissez un mot de passe pour activer votre compte. Ce lien expire dans 72 heures.", link.toString());
-    } catch (emailError) { await repository.delete({ id: profile.id }); throw emailError; }
-    res.status(201).json({ data: profilePayload(profile), message: "Invitation sent." });
+      emailSent = true;
+    } catch {
+      // The account and activation link remain available for the administrator to share manually.
+    }
+    res.status(201).json({
+      data: profilePayload(profile),
+      activationLink: link.toString(),
+      emailSent,
+      message: emailSent ? "Invitation sent." : "Compte créé. L’e-mail n’a pas pu être envoyé ; partagez le lien d’activation manuellement."
+    });
+  } catch (error) { next(error); }
+});
+
+authRouter.post("/users/:id/invite", authenticate, requireAdmin, async (req, res, next) => {
+  const targetUserId = req.params.id as string;
+  if (!z.string().uuid().safeParse(targetUserId).success) {
+    res.status(400).json({ error: { code: "USER_ID_INVALID", message: "Identifiant utilisateur invalide." } });
+    return;
+  }
+  try {
+    const repository = AppDataSource.getRepository(AppUser);
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
+    if (!user) { res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } }); return; }
+    if (user.isActive || user.passwordHash) {
+      res.status(409).json({ error: { code: "USER_ALREADY_ACTIVATED", message: "Ce compte est déjà activé. Aucune invitation d’activation n’est nécessaire." } });
+      return;
+    }
+    await AppDataSource.query(
+      "UPDATE public.auth_tokens SET used_at = now() WHERE user_id = $1 AND purpose = 'invite' AND used_at IS NULL",
+      [user.id]
+    );
+    const token = await createOneTimeAction(user.id, "invite", 72);
+    const link = new URL("/#/reset-password", env.FRONTEND_URL); link.searchParams.set("token", token);
+    let emailSent = false;
+    try {
+      await sendAccountEmail(user.email, "Invitation à rejoindre KOROBO", "Votre compte KOROBO vous attend", "Choisissez un mot de passe pour activer votre compte. Ce lien expire dans 72 heures.", link.toString());
+      emailSent = true;
+    } catch {
+      // Return the new link even when email delivery is unavailable.
+    }
+    res.status(200).json({
+      data: profilePayload(user),
+      activationLink: link.toString(),
+      emailSent,
+      message: emailSent ? "Invitation renvoyée." : "Nouveau lien créé, mais l’e-mail n’a pas pu être envoyé. Partagez le lien manuellement."
+    });
   } catch (error) { next(error); }
 });
 authRouter.post("/password/forgot", async (req, res, next) => {
