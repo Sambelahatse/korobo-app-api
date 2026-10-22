@@ -192,7 +192,7 @@ googleAuthRouter.get("/callback", async (req, res) => {
             fullName,
             email,
             passwordHash: null,
-            googleSub: googleProfile.id,
+            googleSub: googleProfile.id ?? null,
             role: "admin",
             phone: null,
             isActive: true
