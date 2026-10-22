@@ -8,7 +8,8 @@
     "start": "bun src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "db:migrate": "bun src/database/run-migrations.ts"
+    "db:migrate": "bun src/database/run-migrations.ts",
+    "db:migrate-auth": "bun src/database/migrate-auth.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
