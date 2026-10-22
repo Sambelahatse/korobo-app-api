@@ -30,6 +30,7 @@ googleAuthRouter.get("/", (_req, res) => {
     oauthSecret(),
     { expiresIn: "10m", issuer: "korobo-app-api", audience: "korobo-google-oauth" }
   );
+  res.setHeader("Set-Cookie", `korobo_google_state=${encodeURIComponent(state)}; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=600${env.NODE_ENV === "production" ? "; Secure" : ""}`);
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
   url.searchParams.set("redirect_uri", env.GOOGLE_REDIRECT_URI);
@@ -43,7 +44,10 @@ googleAuthRouter.get("/", (_req, res) => {
 googleAuthRouter.get("/callback", async (req, res) => {
   const code = typeof req.query.code === "string" ? req.query.code : "";
   const state = typeof req.query.state === "string" ? req.query.state : "";
-  if (!code || !state || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) {
+  const cookieHeader = req.header("cookie") || "";
+  const cookieState = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith("korobo_google_state="))?.slice("korobo_google_state=".length);
+  res.setHeader("Set-Cookie", `korobo_google_state=; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=0${env.NODE_ENV === "production" ? "; Secure" : ""}`);
+  if (!code || !state || !cookieState || decodeURIComponent(cookieState) !== state || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REDIRECT_URI) {
     res.redirect(frontendRedirect({ google_error: "google_callback_invalid" }));
     return;
   }
