@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { env } from "./config/env";
 import { AppDataSource } from "./database/data-source";
 import { authRouter } from "./routes/auth.routes";
+import { googleAuthRouter } from "./routes/google-auth.routes";
 
 export const app = express();
 
@@ -13,6 +14,7 @@ app.use(cors({ origin: env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
 app.use(express.json({ limit: "1mb" }));
 
 app.use("/auth", authRouter);
+app.use("/auth/google", googleAuthRouter);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
