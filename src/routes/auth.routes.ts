@@ -121,6 +121,7 @@ authRouter.post("/password/reset", async (req, res, next) => {
     await AppDataSource.transaction(async manager => {
       await manager.query("UPDATE public.app_users SET password_hash = $1, is_active = true, updated_at = now() WHERE id = $2", [passwordHash, record.user_id]);
       await manager.query("UPDATE public.auth_tokens SET used_at = now() WHERE id = $1 OR (user_id = $2 AND purpose = $3 AND used_at IS NULL)", [record.id, record.user_id, record.purpose]);
+      await manager.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [record.user_id]);
     });
     res.status(200).json({ message: "Password updated. You can now sign in." });
   } catch (error) { next(error); }
@@ -132,6 +133,9 @@ authRouter.post("/password/change", authenticate, async (req, res, next) => {
     const user = await AppDataSource.getRepository(AppUser).createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: req.authProfile!.id }).getOne();
     if (!user?.passwordHash || !(await bcrypt.compare(parsed.data.currentPassword, user.passwordHash))) { res.status(400).json({ error: { code: "CURRENT_PASSWORD_INVALID", message: "The current password is incorrect." } }); return; }
     user.passwordHash = await bcrypt.hash(parsed.data.newPassword, 12); await AppDataSource.getRepository(AppUser).save(user);
-    res.status(200).json({ message: "Password changed." });
+    const token = req.header("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+    const claims = token ? verifyAccessToken(token) : null;
+    await AppDataSource.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND token_id <> $2", [user.id, claims?.jti || ""]);
+    res.status(200).json({ message: "Password changed. Other sessions have been signed out." });
   } catch (error) { next(error); }
 });
