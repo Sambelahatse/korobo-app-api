@@ -338,7 +338,7 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
       `UPDATE public.equipment_maintenance SET maintenance_type=$2,status=$3,priority=$4,title=$5,description=$6,diagnosis=$7,work_performed=$8,cost=$9,scheduled_at=$10,next_due_at=$11,assigned_to=$12,
        started_at=CASE WHEN $3='in_progress' THEN COALESCE(started_at,now()) ELSE started_at END,
        completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END, updated_at=now()
-       WHERE id=$1 AND EXISTS (SELECT 1 FROM public.equipment e WHERE e.id=public.equipment_maintenance.equipment_id AND e.company_id=$14) RETURNING *`,
+       WHERE id=$1 AND EXISTS (SELECT 1 FROM public.equipment e WHERE e.id=public.equipment_maintenance.equipment_id AND e.company_id=$13) RETURNING *`,
       [req.params.maintenanceId, merged.maintenanceType, merged.status, merged.priority, merged.title, merged.description ?? null,
         merged.diagnosis ?? null, merged.workPerformed ?? null, merged.cost ?? null, merged.scheduledAt ?? null, merged.nextDueAt ?? null, merged.assignedToId ?? null, req.authProfile!.companyId]
     );
