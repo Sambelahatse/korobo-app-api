@@ -45,9 +45,9 @@ For Google sign-in, create an OAuth 2.0 **Web application** client in Google Clo
 - `GOOGLE_CLIENT_SECRET`: OAuth client secret (API only; never expose it to the frontend)
 - `GOOGLE_REDIRECT_URI`: exact callback URL, for example `https://YOUR_API_HOST/auth/google/callback`
 
-Add that exact URL under **Authorized redirect URIs** in Google Cloud Console. The login button starts at `GET /auth/google`. Google verifies the identity, but the API only signs in an already-existing, active KOROBO user whose Neon email matches Google's verified email. Roles and profile data continue to come from Neon; Google sign-in does not create users or grant roles.
+Add that exact URL under **Authorized redirect URIs** in Google Cloud Console. The login button starts at `GET /auth/google`. For normal Google sign-in, the API only signs in an already-existing, active KOROBO user whose email matches Google's verified email. When the explicit `flow=register` is used, the API creates a new company and its first owner with the `admin` role in one transaction; the company name is carried in the signed OAuth state.
 
-The first owner is created via `POST /auth/bootstrap-owner` with `OWNER_BOOTSTRAP_TOKEN`. Remove that token after the first owner is created. Invitations and password resets require SMTP.
+Public registration uses `POST /auth/register` to create a company and its owner. `POST /auth/bootstrap-owner` remains only for legacy/manual initial setup and requires `OWNER_BOOTSTRAP_TOKEN`; remove that token after any manual bootstrap. Invitations and password resets require SMTP.
 
 Existing Supabase Auth password hashes are not available to this API for direct migration. Existing user profiles are preserved, but users must set a new password via a reset/invitation flow before they can sign in with the new authentication system.
 
