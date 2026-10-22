@@ -2,15 +2,44 @@ import nodemailer from "nodemailer";
 import { env } from "../config/env";
 
 function getTransport() {
-  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD) {
-    throw new Error("Email service is not configured. Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD.");
+  if (!env.SMTP_HOST || !env.SMTP_USER) {
+    throw new Error("Email service is not configured. Set SMTP_HOST and SMTP_USER.");
   }
-  return nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE,
-    auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD }
-  });
+
+  const hasCompleteOAuthConfig = Boolean(
+    env.GOOGLE_OAUTH_CLIENT_ID &&
+    env.GOOGLE_OAUTH_CLIENT_SECRET &&
+    env.GOOGLE_OAUTH_REFRESH_TOKEN
+  );
+
+  if (hasCompleteOAuthConfig) {
+    return nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
+      auth: {
+        type: "OAuth2",
+        user: env.SMTP_USER,
+        clientId: env.GOOGLE_OAUTH_CLIENT_ID,
+        clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+        refreshToken: env.GOOGLE_OAUTH_REFRESH_TOKEN
+      }
+    });
+  }
+
+  // Keep password-based SMTP available as a backward-compatible fallback.
+  if (env.SMTP_PASSWORD) {
+    return nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
+      auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD }
+    });
+  }
+
+  throw new Error(
+    "Email service is not configured. Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET and GOOGLE_OAUTH_REFRESH_TOKEN for Gmail OAuth2, or set SMTP_PASSWORD for password-based SMTP."
+  );
 }
 
 export async function sendAccountEmail(to: string, subject: string, heading: string, message: string, actionUrl: string): Promise<void> {
