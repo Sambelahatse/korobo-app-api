@@ -141,6 +141,38 @@ authRouter.post("/users/:id/invite", authenticate, requireAdmin, async (req, res
     });
   } catch (error) { next(error); }
 });
+authRouter.post("/users/:id/activation-link", authenticate, requireAdmin, async (req, res, next) => {
+  const targetUserId = req.params.id as string;
+  if (!z.string().uuid().safeParse(targetUserId).success) {
+    res.status(400).json({ error: { code: "USER_ID_INVALID", message: "Identifiant utilisateur invalide." } });
+    return;
+  }
+  try {
+    const repository = AppDataSource.getRepository(AppUser);
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
+    if (!user) {
+      res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
+      return;
+    }
+    if (user.isActive || user.passwordHash) {
+      res.status(409).json({ error: { code: "USER_ALREADY_ACTIVATED", message: "Ce compte est déjà activé. Aucun lien d’activation n’est nécessaire." } });
+      return;
+    }
+    await AppDataSource.query(
+      "UPDATE public.auth_tokens SET used_at = now() WHERE user_id = $1 AND purpose = 'invite' AND used_at IS NULL",
+      [user.id]
+    );
+    const token = await createOneTimeAction(user.id, "invite", 72);
+    const link = new URL("/#/reset-password", env.FRONTEND_URL);
+    link.searchParams.set("token", token);
+    res.status(200).json({
+      data: profilePayload(user),
+      activationLink: link.toString(),
+      message: "Lien d’activation généré. Aucun e-mail n’a été envoyé."
+    });
+  } catch (error) { next(error); }
+});
+
 authRouter.post("/password/forgot", async (req, res, next) => {
   const parsed = resetRequestSchema.safeParse(req.body);
   if (!parsed.success) { res.status(200).json({ message: "If the account exists, reset instructions will be sent." }); return; }
