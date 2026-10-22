@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { accountPreferencesSchema, deleteAccountConfirmationSchema, profileSettingsSchema } from "../services/account-settings.validation";
 import bcrypt from "bcryptjs";
 import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
@@ -9,19 +10,7 @@ import { hashToken, verifyAccessToken } from "../services/auth";
 export const accountRouter = Router();
 accountRouter.use(authenticate);
 
-const profileSchema = z.object({
-  fullName: z.string().trim().min(2).max(160),
-  phone: z.string().trim().max(40).nullable().optional()
-});
-const preferencesSchema = z.object({
-  language: z.enum(["Français", "English", "Malagasy"]).default("Français"),
-  theme: z.enum(["Clair", "Sombre", "Système"]).default("Clair"),
-  notifications: z.object({
-    email: z.boolean(), push: z.boolean(), outageAlerts: z.boolean(),
-    maintenanceReminders: z.boolean(), monthlyReports: z.boolean()
-  }),
-  security: z.object({ twoFactor: z.boolean(), sessionTimeout: z.boolean() })
-});
+
 function currentTokenId(req: import("express").Request): string | null {
   const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return null;
@@ -47,7 +36,7 @@ accountRouter.get("/", async (req, res, next) => {
 });
 
 accountRouter.patch("/profile", async (req, res, next) => {
-  const parsed = profileSchema.safeParse(req.body);
+  const parsed = profileSettingsSchema.safeParse(req.body);
   if (!parsed.success) { accountError(res, 400, "VALIDATION_ERROR", "Vérifiez le nom et le numéro de téléphone."); return; }
   try {
     const repository = AppDataSource.getRepository(AppUser);
@@ -68,7 +57,7 @@ accountRouter.get("/preferences", async (req, res, next) => {
 });
 
 accountRouter.put("/preferences", async (req, res, next) => {
-  const parsed = preferencesSchema.safeParse(req.body);
+  const parsed = accountPreferencesSchema.safeParse(req.body);
   if (!parsed.success) { accountError(res, 400, "VALIDATION_ERROR", "Les préférences fournies sont invalides."); return; }
   try {
     const rows = await AppDataSource.query(
@@ -123,7 +112,7 @@ accountRouter.post("/google/unlink", async (req, res, next) => {
 });
 
 accountRouter.delete("/", async (req, res, next) => {
-  const parsed = z.object({ email: z.string().trim().email().max(254), currentPassword: z.string().max(128).optional() }).safeParse(req.body);
+  const parsed = deleteAccountConfirmationSchema.safeParse(req.body);
   if (!parsed.success || parsed.data.email.toLowerCase() !== req.authProfile!.email.toLowerCase()) {
     accountError(res, 400, "ACCOUNT_CONFIRMATION_INVALID", "Saisissez l’adresse e-mail exacte du compte pour confirmer.");
     return;
