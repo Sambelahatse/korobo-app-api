@@ -114,7 +114,7 @@ authRouter.post("/users/:id/invite", authenticate, requireAdmin, async (req, res
   }
   try {
     const repository = AppDataSource.getRepository(AppUser);
-    const user = await repository.findOne({ where: { id: targetUserId } });
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
     if (!user) { res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } }); return; }
     if (user.isActive || user.passwordHash) {
       res.status(409).json({ error: { code: "USER_ALREADY_ACTIVATED", message: "Ce compte est déjà activé. Aucune invitation d’activation n’est nécessaire." } });
