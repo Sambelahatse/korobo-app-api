@@ -29,7 +29,8 @@ accountRouter.get("/", async (req, res, next) => {
     ) as Array<{ preferences: unknown }>;
     res.json({ data: {
       profile: { id: user.id, fullName: user.fullName, email: user.email, phone: user.phone, role: user.role, isActive: user.isActive },
-      googleLinked: Boolean(user.googleSub),\n      hasPassword: Boolean(user.passwordHash),
+      googleLinked: Boolean(user.googleSub),
+      hasPassword: Boolean(user.passwordHash),
       preferences: preferences[0]?.preferences ?? null
     }});
   } catch (error) { next(error); }
