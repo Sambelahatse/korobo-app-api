@@ -293,6 +293,9 @@ equipmentRouter.post("/:id/maintenance", async (req, res, next) => {
     const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const m = parsed.data;
+    if (m.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: m.assignedToId, isActive: true, companyId: req.authProfile!.companyId } })) {
+      fail(res, 400, "ASSIGNEE_NOT_FOUND", "L’utilisateur affecté est introuvable, inactif ou appartient à une autre entreprise."); return;
+    }
     const rows = await AppDataSource.query(
       `INSERT INTO public.equipment_maintenance
        (equipment_id,maintenance_type,status,priority,title,description,diagnosis,work_performed,cost,scheduled_at,next_due_at,assigned_to,created_by,started_at,completed_at)
@@ -320,6 +323,9 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
     if (!existing.length) { fail(res, 404, "MAINTENANCE_NOT_FOUND", "Intervention introuvable."); return; }
     const current = existing[0]!;
     const patch = parsed.data;
+    if (patch.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: patch.assignedToId, isActive: true, companyId: req.authProfile!.companyId } })) {
+      fail(res, 400, "ASSIGNEE_NOT_FOUND", "L’utilisateur affecté est introuvable, inactif ou appartient à une autre entreprise."); return;
+    }
     const merged = {
       equipment_id: current.equipment_id,
       maintenanceType: patch.maintenanceType ?? current.maintenance_type,
