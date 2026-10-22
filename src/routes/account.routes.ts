@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
 import { authenticate } from "../middleware/authenticate";
-import { hashToken, verifyAccessToken } from "../services/auth";
+import { verifyAccessToken } from "../services/auth";
 
 export const accountRouter = Router();
 accountRouter.use(authenticate);
@@ -22,14 +22,14 @@ function accountError(res: import("express").Response, status: number, code: str
 
 accountRouter.get("/", async (req, res, next) => {
   try {
-    const user = await AppDataSource.getRepository(AppUser).findOne({ where: { id: req.authProfile!.id } });
+    const user = await AppDataSource.getRepository(AppUser).createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: req.authProfile!.id }).getOne();
     if (!user) { accountError(res, 404, "ACCOUNT_NOT_FOUND", "Compte introuvable."); return; }
     const preferences = await AppDataSource.query(
       "SELECT preferences FROM public.account_preferences WHERE user_id = $1 LIMIT 1", [user.id]
     ) as Array<{ preferences: unknown }>;
     res.json({ data: {
       profile: { id: user.id, fullName: user.fullName, email: user.email, phone: user.phone, role: user.role, isActive: user.isActive },
-      googleLinked: Boolean(user.googleSub),
+      googleLinked: Boolean(user.googleSub),\n      hasPassword: Boolean(user.passwordHash),
       preferences: preferences[0]?.preferences ?? null
     }});
   } catch (error) { next(error); }
