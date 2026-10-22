@@ -10,7 +10,8 @@ export const googleAuthRouter = Router();
 
 function frontendRedirect(params: Record<string, string>) {
   const url = new URL("/", env.FRONTEND_URL);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  const query = new URLSearchParams(params);
+  url.hash = `/login?${query.toString()}`;
   return url.toString();
 }
 
