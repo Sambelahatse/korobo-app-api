@@ -155,3 +155,100 @@ authRouter.post("/password/change", authenticate, async (req, res, next) => {
     res.status(200).json({ message: "Password changed. Other sessions have been signed out." });
   } catch (error) { next(error); }
 });
+
+const userManagementSchema = z.object({
+  fullName: z.string().trim().min(2).max(160).optional(),
+  email: z.string().trim().email().max(254).optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  role: z.enum(["admin", "manager", "technician", "viewer"]).optional(),
+  isActive: z.boolean().optional()
+}).refine((value) => Object.keys(value).length > 0, { message: "At least one field is required." });
+
+authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => {
+  try {
+    const users = await AppDataSource.getRepository(AppUser).createQueryBuilder("user")
+      .select(["user.id", "user.fullName", "user.email", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
+      .orderBy("user.createdAt", "DESC")
+      .getMany();
+    const activity = await AppDataSource.query(
+      `SELECT user_id, MAX(last_seen_at) AS last_seen_at
+       FROM public.auth_sessions GROUP BY user_id`
+    ) as Array<{ user_id: string; last_seen_at: Date | null }>;
+    const lastSeen = new Map(activity.map(row => [row.user_id, row.last_seen_at]));
+    res.json({ data: users.map(user => ({
+      ...profilePayload(user),
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastSeenAt: lastSeen.get(user.id) ?? null
+    })) });
+  } catch (error) { next(error); }
+});
+
+authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next) => {
+  if (!z.string().uuid().safeParse(req.params.id).success) {
+    res.status(400).json({ error: { code: "USER_ID_INVALID", message: "Identifiant utilisateur invalide." } });
+    return;
+  }
+  const parsed = userManagementSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Les informations utilisateur fournies sont invalides." } });
+    return;
+  }
+  const input = parsed.data;
+  try {
+    const runner = AppDataSource.createQueryRunner();
+    await runner.connect();
+    await runner.startTransaction();
+    try {
+      await runner.query("SELECT pg_advisory_xact_lock($1)", [731904219]);
+      const repository = runner.manager.getRepository(AppUser);
+      const user = await repository.findOne({ where: { id: req.params.id } });
+      if (!user) {
+        await runner.rollbackTransaction();
+        res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
+        return;
+      }
+      const nextRole = input.role ?? user.role;
+      const nextActive = input.isActive ?? user.isActive;
+      if (user.id === req.authProfile!.id && (nextRole !== "admin" || !nextActive)) {
+        await runner.rollbackTransaction();
+        res.status(409).json({ error: { code: "SELF_LOCKOUT_PREVENTED", message: "Vous ne pouvez pas retirer votre propre accès administrateur ni désactiver votre compte depuis cette page." } });
+        return;
+      }
+      if (user.role === "admin" && user.isActive && (nextRole !== "admin" || !nextActive)) {
+        const admins = await repository.count({ where: { role: "admin", isActive: true } });
+        if (admins <= 1) {
+          await runner.rollbackTransaction();
+          res.status(409).json({ error: { code: "LAST_ADMIN_REQUIRED", message: "Au moins un administrateur actif doit être conservé." } });
+          return;
+        }
+      }
+      if (input.email && input.email.trim().toLowerCase() !== user.email.toLowerCase()) {
+        const duplicate = await repository.createQueryBuilder("other")
+          .where("LOWER(other.email) = LOWER(:email)", { email: input.email.trim() })
+          .andWhere("other.id <> :id", { id: user.id }).getOne();
+        if (duplicate) {
+          await runner.rollbackTransaction();
+          res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "Cette adresse e-mail est déjà utilisée." } });
+          return;
+        }
+      }
+      if (input.fullName !== undefined) user.fullName = input.fullName;
+      if (input.email !== undefined) user.email = input.email.trim().toLowerCase();
+      if (input.phone !== undefined) user.phone = input.phone?.trim() || null;
+      user.role = nextRole;
+      user.isActive = nextActive;
+      await repository.save(user);
+      if (!user.isActive) {
+        await runner.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [user.id]);
+      }
+      await runner.commitTransaction();
+      res.json({ data: profilePayload(user), message: "Utilisateur mis à jour." });
+    } catch (error) {
+      if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined);
+      throw error;
+    } finally {
+      await runner.release();
+    }
+  } catch (error) { next(error); }
+});
