@@ -6,6 +6,7 @@ import { AppDataSource } from "./database/data-source";
 import { authRouter } from "./routes/auth.routes";
 import { googleAuthRouter } from "./routes/google-auth.routes";
 import { accountRouter } from "./routes/account.routes";
+import { equipmentRouter } from "./routes/equipment.routes";
 
 export const app = express();
 
@@ -17,6 +18,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/auth", authRouter);
 app.use("/auth/google", googleAuthRouter);
 app.use("/account", accountRouter);
+app.use("/equipment", equipmentRouter);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
