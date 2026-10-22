@@ -3,6 +3,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
+import { Company } from "../entities/Company";
 import { env } from "../config/env";
 import { issueAccessToken, verifyAccessToken } from "../services/auth";
 import { authenticate } from "../middleware/authenticate";
@@ -27,8 +28,13 @@ googleAuthRouter.get("/", (req, res) => {
     return;
   }
   const requestedFlow = req.query.flow === "register" ? "register" : "login";
+  const companyName = typeof req.query.companyName === "string" ? req.query.companyName.trim() : "";
+  if (requestedFlow === "register" && (companyName.length < 2 || companyName.length > 180)) {
+    res.redirect(frontendRedirect({ google_error: "company_name_required" }, "register"));
+    return;
+  }
   const state = jwt.sign(
-    { purpose: "google_oauth", flow: requestedFlow, nonce: randomBytes(24).toString("base64url") },
+    { purpose: "google_oauth", flow: requestedFlow, ...(requestedFlow === "register" ? { companyName } : {}), nonce: randomBytes(24).toString("base64url") },
     oauthSecret(),
     { expiresIn: "10m", issuer: "korobo-app-api", audience: "korobo-google-oauth" }
   );
@@ -162,21 +168,40 @@ googleAuthRouter.get("/callback", async (req, res) => {
       return;
     }
 
-    // Existing accounts keep their Neon-owned roles. Public Google signup can never grant admin.
+    // A Google registration creates a dedicated company and its owner in one transaction.
     if (!user && flow === "register") {
+      const companyName = typeof claims === "object" && claims !== null && "companyName" in claims && typeof claims.companyName === "string"
+        ? claims.companyName.trim().slice(0, 180)
+        : "";
+      if (companyName.length < 2) {
+        res.redirect(frontendRedirect({ google_error: "company_name_required" }, "register"));
+        return;
+      }
       const fullName = googleProfile.name?.trim().slice(0, 160) || (email.split("@")[0] || "KOROBO user").slice(0, 160);
       try {
-        user = repository.create({
-          id: randomUUID(),
-          fullName,
-          email,
-          passwordHash: null,
-          googleSub: googleProfile.id,
-          role: "technician",
-          phone: null,
-          isActive: true
+        user = await AppDataSource.transaction(async manager => {
+          const company = manager.create(Company, {
+            name: companyName,
+            slug: companyName.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 55) + "-" + randomUUID().slice(0, 8),
+            ownerUserId: null
+          });
+          await manager.save(Company, company);
+          const createdUser = manager.create(AppUser, {
+            id: randomUUID(),
+            companyId: company.id,
+            fullName,
+            email,
+            passwordHash: null,
+            googleSub: googleProfile.id,
+            role: "admin",
+            phone: null,
+            isActive: true
+          });
+          await manager.save(AppUser, createdUser);
+          company.ownerUserId = createdUser.id;
+          await manager.save(Company, company);
+          return createdUser;
         });
-        user = await repository.save(user);
       } catch (creationError) {
         user = await repository.createQueryBuilder("user")
           .where("LOWER(user.email) = LOWER(:email)", { email })
