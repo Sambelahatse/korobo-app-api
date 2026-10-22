@@ -14,7 +14,6 @@ export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
 
 @Entity({ name: "app_users", schema: "public" })
 export class AppUser {
-  // The UUID is the matching Supabase Auth auth.users.id; it is not generated here.
   @PrimaryColumn("uuid")
   id!: string;
 
@@ -23,6 +22,9 @@ export class AppUser {
 
   @Column({ type: "varchar", length: 254, unique: true })
   email!: string;
+
+  @Column({ name: "password_hash", type: "varchar", length: 255, nullable: true, select: false })
+  passwordHash!: string | null;
 
   @Column({ type: "varchar", length: 40, default: "technician" })
   role!: AppUserRole;
