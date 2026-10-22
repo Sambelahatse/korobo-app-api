@@ -30,6 +30,12 @@ Set `DATABASE_URL` to the Neon PostgreSQL connection string. Set `DATABASE_CA_CE
 
 Apply the additive authentication schema before deploying the new authentication code by running `bun run db:migrate-auth` against the configured Neon database. This idempotent command adds a nullable `password_hash` column and the `auth_tokens` table without deleting existing KOROBO data. Do not run the full `db:migrate` command on an existing database until you have confirmed that the initial schema migration is recorded in TypeORM's migrations table.
 
+## Multi-company isolation
+
+Every public registration creates a new company and an active `admin` owner. Email/password and Google registration both create the company and owner together. Invited team members inherit the inviter's company and can only be managed inside that company. Sites and equipment are tenant-scoped in the API; equipment history and maintenance are scoped through the owning equipment record. Existing data is backfilled into a single legacy company so no records are discarded.
+
+Before deploying this code, apply the reviewed `20261022150000-MultiCompanyTenancy` migration to the configured database using the project migration workflow. The migration adds company ownership columns and preserves existing records. Verify the migration completes successfully before switching traffic to this API version.
+
 ## Authentication
 
 The API manages email/password sign-in, Google OAuth, first-owner bootstrap, invitations, password reset/change, and JWT verification for REST and Socket.IO. Configure `JWT_SECRET` with at least 32 random characters and configure SMTP variables to send invitations and reset links. Configure `FRONTEND_URL` to the deployed frontend origin.
