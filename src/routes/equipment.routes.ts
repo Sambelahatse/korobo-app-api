@@ -349,6 +349,16 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
       equipment.nextMaintenanceAt = typeof merged.nextDueAt === "string" ? merged.nextDueAt.slice(0, 10) : null;
     }
     if (equipment) await AppDataSource.getRepository(Equipment).save(equipment);
+    if (equipment && merged.status !== current.status && (merged.status === "in_progress" || merged.status === "completed")) {
+      await recordMovement({
+        equipmentId: equipment.id,
+        type: merged.status === "completed" ? "maintenance_completed" : "maintenance_started",
+        fromSiteId: equipment.siteId,
+        toSiteId: equipment.siteId,
+        notes: String(merged.title ?? "Intervention de maintenance"),
+        createdBy: req.authProfile!.id
+      });
+    }
     res.json({ data: rows[0] });
   } catch (error) { next(error); }
 });
