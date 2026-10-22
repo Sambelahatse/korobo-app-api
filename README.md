@@ -28,7 +28,7 @@ Configure secrets in `.env`; never commit `.env`, database passwords, JWT secret
 
 Set `DATABASE_URL` to the Neon PostgreSQL connection string. Set `DATABASE_CA_CERT` only if your deployment requires a custom CA. Schema changes must be made through reviewed migrations; TypeORM synchronization is disabled.
 
-Apply the native-auth migration to the existing database before deploying the new authentication code. It adds a nullable `password_hash` column and the `auth_tokens` table without deleting existing KOROBO data.
+Apply the additive authentication schema before deploying the new authentication code by running `bun run db:migrate-auth` against the configured Neon database. This idempotent command adds a nullable `password_hash` column and the `auth_tokens` table without deleting existing KOROBO data. Do not run the full `db:migrate` command on an existing database until you have confirmed that the initial schema migration is recorded in TypeORM's migrations table.
 
 ## Authentication
 
