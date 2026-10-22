@@ -162,7 +162,7 @@ authRouter.post("/users/:id/invite", authenticate, requireAdmin, async (req, res
   }
   try {
     const repository = AppDataSource.getRepository(AppUser);
-    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).andWhere("user.companyId = :companyId", { companyId: req.authProfile!.companyId }).getOne();
     if (!user) { res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } }); return; }
     if (user.isActive || user.passwordHash) {
       res.status(409).json({ error: { code: "USER_ALREADY_ACTIVATED", message: "Ce compte est déjà activé. Aucune invitation d’activation n’est nécessaire." } });
@@ -381,7 +381,7 @@ authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next
         return;
       }
       if (user.role === "admin" && user.isActive && (nextRole !== "admin" || !nextActive)) {
-        const admins = await repository.count({ where: { role: "admin", isActive: true } });
+        const admins = await repository.count({ where: { role: "admin", isActive: true, companyId: req.authProfile!.companyId } });
         if (admins <= 1) {
           await runner.rollbackTransaction();
           res.status(409).json({ error: { code: "LAST_ADMIN_REQUIRED", message: "Au moins un administrateur actif doit être conservé." } });
