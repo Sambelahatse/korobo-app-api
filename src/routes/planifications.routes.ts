@@ -66,6 +66,11 @@ planificationsRouter.get("/", async (req, res, next) => {
     if (typeof req.query.status === "string" && statusSchema.safeParse(req.query.status).success) {
       qb.andWhere("p.status = :status", { status: req.query.status });
     }
+    if (req.query.assignment === "unassigned") {
+      qb.andWhere("p.assignedToId IS NULL");
+    } else if (req.query.assignment === "assigned") {
+      qb.andWhere("p.assignedToId IS NOT NULL");
+    }
     if (typeof req.query.from === "string" && !Number.isNaN(Date.parse(req.query.from))) {
       qb.andWhere("p.scheduledAt >= :from", { from: new Date(req.query.from).toISOString() });
     }
