@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
 import { Planification } from "../entities/Planification";
+import { Notification } from "../entities/Notification";
 import { Site } from "../entities/Site";
 import { authenticate } from "../middleware/authenticate";
 
@@ -80,6 +81,13 @@ planificationsRouter.post("/", async (req, res, next) => {
       createdById: req.authProfile!.id
     });
     await repo.save(item);
+    if (item.assignedToId) {
+      await AppDataSource.getRepository(Notification).save(AppDataSource.getRepository(Notification).create({
+        companyId: req.authProfile!.companyId, recipientId: item.assignedToId, type: "info",
+        title: "Nouvelle intervention assignée", message: `Une intervention « ${item.title} » vous a été assignée.`,
+        siteName: site.name, link: "/planifications", isRead: false, readAt: null
+      }));
+    }
     const data = await repo.findOne({ where: { id: item.id }, relations: { site: true, assignedTo: true } });
     res.status(201).json({ data });
   } catch (error) { next(error); }
@@ -127,6 +135,13 @@ planificationsRouter.patch("/:id", async (req, res, next) => {
     if (input.durationMinutes !== undefined) item.durationMinutes = input.durationMinutes;
     if (input.assignedToId !== undefined) item.assignedToId = input.assignedToId;
     await repo.save(item);
+    if (input.assignedToId && input.assignedToId !== undefined) {
+      await AppDataSource.getRepository(Notification).save(AppDataSource.getRepository(Notification).create({
+        companyId: req.authProfile!.companyId, recipientId: input.assignedToId, type: "info",
+        title: "Intervention mise à jour", message: `L’intervention « ${item.title} » vous a été assignée ou réassignée.`,
+        siteName: item.site.name, link: "/planifications", isRead: false, readAt: null
+      }));
+    }
     const data = await repo.findOne({ where: { id: item.id }, relations: { site: true, assignedTo: true } });
     res.json({ data });
   } catch (error) { next(error); }
