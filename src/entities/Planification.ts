@@ -22,6 +22,9 @@ export class Planification {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
+  @Column({ name: "organization_id", type: "uuid" })
+  organizationId!: string;
+
   @Column({ name: "site_id", type: "uuid" })
   siteId!: string;
 
