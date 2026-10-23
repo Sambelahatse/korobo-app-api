@@ -105,7 +105,7 @@ planificationsRouter.post("/", async (req, res, next) => {
         return;
       }
     }
-    const conflict = await findScheduleConflict({
+    const conflict = input.status === "cancelled" || input.status === "completed" ? null : await findScheduleConflict({
       companyId: req.authProfile!.companyId, assignedToId: input.assignedToId ?? null,
       scheduledAt: new Date(input.scheduledAt), startTime: input.startTime, endTime: input.endTime
     });
@@ -179,7 +179,8 @@ planificationsRouter.patch("/:id", async (req, res, next) => {
     }
     const effectiveScheduledAt = input.scheduledAt !== undefined ? new Date(input.scheduledAt) : item.scheduledAt;
     const effectiveAssignedToId = input.assignedToId !== undefined ? input.assignedToId : item.assignedToId;
-    const conflict = await findScheduleConflict({
+    const effectiveStatus = input.status ?? item.status;
+    const conflict = effectiveStatus === "cancelled" || effectiveStatus === "completed" ? null : await findScheduleConflict({
       companyId: req.authProfile!.companyId, assignedToId: effectiveAssignedToId,
       scheduledAt: effectiveScheduledAt, startTime: effectiveStart, endTime: effectiveEnd, excludeId: item.id
     });
