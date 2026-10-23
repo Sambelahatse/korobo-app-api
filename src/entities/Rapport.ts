@@ -14,6 +14,7 @@ import { Planification } from "./Planification";
 import { Site } from "./Site";
 
 export type RapportStatus = "draft" | "validated";
+export type RapportType = "mensuel" | "incident" | "intervention";
 
 @Entity({ name: "rapports", schema: "public" })
 @Index("rapports_site_id_idx", ["siteId"])
@@ -39,6 +40,16 @@ export class Rapport {
 
   @Column({ type: "varchar", length: 180 })
   title!: string;
+
+  @Column({ name: "report_type", type: "varchar", length: 30, default: "intervention" })
+  reportType!: RapportType;
+
+  @Column({ name: "technician_id", type: "uuid", nullable: true })
+  technicianId!: string | null;
+
+  @ManyToOne(() => AppUser, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "technician_id" })
+  technician!: Relation<AppUser> | null;
 
   @Column({ name: "report_date", type: "date", default: () => "CURRENT_DATE" })
   reportDate!: string;
