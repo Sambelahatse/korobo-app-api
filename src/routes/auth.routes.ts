@@ -5,6 +5,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { AppDataSource } from "../database/data-source";
 import { AppUser, type AppUserRole } from "../entities/AppUser";
+import { Company } from "../entities/Company";
 import { env } from "../config/env";
 import { authenticate, requireAdmin } from "../middleware/authenticate";
 import { createOneTimeToken, hashToken, issueAccessToken, verifyAccessToken } from "../services/auth";
@@ -22,7 +23,7 @@ function tokenMatches(candidate: string | undefined, expected: string | undefine
   return a.length === b.length && timingSafeEqual(a, b);
 }
 function profilePayload(profile: AppUser) {
-  return { id: profile.id, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive };
+  return { id: profile.id, companyId: profile.companyId, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive };
 }
 async function issueSession(profile: AppUser, req: import("express").Request) {
   const accessToken = issueAccessToken({ id: profile.id, email: profile.email });
@@ -40,6 +41,63 @@ async function createOneTimeAction(userId: string, purpose: "invite" | "password
   await AppDataSource.query(`INSERT INTO public.auth_tokens (user_id, token_hash, purpose, expires_at) VALUES ($1, $2, $3, now() + ($4 * interval '1 hour'))`, [userId, hashToken(token), purpose, ttlHours]);
   return token;
 }
+
+const registerSchema = z.object({
+  companyName: z.string().trim().min(2).max(180),
+  fullName: z.string().trim().min(2).max(160),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(12).max(128),
+  phone: z.string().trim().max(40).optional()
+});
+
+authRouter.post("/register", async (req, res, next) => {
+  const parsed = registerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: "VALIDATION_ERROR", message: parsed.error.issues[0]?.message ?? "Vérifiez les informations de l’entreprise et du propriétaire." } });
+    return;
+  }
+  if (!AppDataSource.isInitialized) {
+    res.status(503).json({ error: { code: "DATABASE_UNAVAILABLE", message: "La base de données n’est pas disponible." } });
+    return;
+  }
+  const runner = AppDataSource.createQueryRunner();
+  try {
+    await runner.connect();
+    await runner.startTransaction();
+    const input = parsed.data;
+    const email = input.email.toLowerCase();
+    const existing = await runner.manager.getRepository(AppUser).findOne({ where: { email } });
+    if (existing) {
+      await runner.rollbackTransaction();
+      res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "Cette adresse e-mail possède déjà un compte." } });
+      return;
+    }
+    const slugBase = input.companyName.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 150) || "entreprise";
+    const company = runner.manager.create(Company, { name: input.companyName, slug: `${slugBase}-${randomUUID().slice(0, 8)}` });
+    await runner.manager.save(Company, company);
+    const profile = runner.manager.create(AppUser, {
+      id: randomUUID(),
+      companyId: company.id,
+      fullName: input.fullName,
+      email,
+      passwordHash: await bcrypt.hash(input.password, 12),
+      role: "admin" satisfies AppUserRole,
+      phone: input.phone || null,
+      isActive: true
+    });
+    await runner.manager.save(AppUser, profile);
+    company.ownerUserId = profile.id;
+    await runner.manager.save(Company, company);
+    await runner.commitTransaction();
+    res.status(201).json({ ...await issueSession(profile, req), company: { id: company.id, name: company.name }, message: "Entreprise créée. Vous en êtes le propriétaire." });
+  } catch (error) {
+    if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined);
+    next(error);
+  } finally {
+    await runner.release();
+  }
+});
+
 authRouter.post("/bootstrap-owner", async (req, res, next) => {
   if (!tokenMatches(req.header("x-owner-bootstrap-token"), env.OWNER_BOOTSTRAP_TOKEN)) { res.status(403).json({ error: { code: "BOOTSTRAP_TOKEN_INVALID", message: "Owner setup is not authorized." } }); return; }
   const parsed = ownerSchema.safeParse(req.body);
