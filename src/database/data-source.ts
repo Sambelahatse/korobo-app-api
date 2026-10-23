@@ -6,6 +6,7 @@ import { Site } from "../entities/Site";
 import { Equipment } from "../entities/Equipment";
 import { Planification } from "../entities/Planification";
 import { Rapport } from "../entities/Rapport";
+import { Company } from "../entities/Company";
 
 const databaseUrl = env.DATABASE_URL ? new URL(env.DATABASE_URL) : undefined;
 // Keep SSL settings in the TypeORM config so a URL sslmode parameter cannot override the trusted CA.
@@ -24,7 +25,7 @@ export const AppDataSource = new DataSource({
         ...(env.DATABASE_CA_CERT ? { ca: env.DATABASE_CA_CERT.replace(/\\n/g, "\n") } : {})
       }
     : false,
-  entities: [AppUser, Site, Equipment, Planification, Rapport],
+  entities: [Company, AppUser, Site, Equipment, Planification, Rapport],
   migrations: ["migrations/*.{ts,js}"],
   synchronize: false,
   migrationsRun: false,

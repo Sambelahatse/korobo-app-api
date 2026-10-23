@@ -3,12 +3,15 @@ import {
   CreateDateColumn,
   Entity,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
   PrimaryColumn,
   UpdateDateColumn
 } from "typeorm";
 import type { Relation } from "typeorm";
 import { Planification } from "./Planification";
 import { Rapport } from "./Rapport";
+import { Company } from "./Company";
 
 export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
 
@@ -16,6 +19,13 @@ export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
 export class AppUser {
   @PrimaryColumn("uuid")
   id!: string;
+
+  @Column({ name: "company_id", type: "uuid" })
+  companyId!: string;
+
+  @ManyToOne(() => Company, { nullable: false, onDelete: "RESTRICT" })
+  @JoinColumn({ name: "company_id" })
+  company!: Relation<Company>;
 
   @Column({ name: "full_name", type: "varchar", length: 160 })
   fullName!: string;

@@ -32,9 +32,9 @@ const siteSchema = z.object({
   notes: z.string().trim().max(10000).nullable().optional()
 });
 
-sitesRouter.get("/", async (_req, res, next) => {
+sitesRouter.get("/", async (req, res, next) => {
   try {
-    const data = await AppDataSource.getRepository(Site).find({ order: { name: "ASC" } });
+    const data = await AppDataSource.getRepository(Site).find({ where: { companyId: req.authProfile!.companyId }, order: { name: "ASC" } });
     res.json({ data });
   } catch (error) { next(error); }
 });
@@ -52,10 +52,11 @@ sitesRouter.post("/", async (req, res, next) => {
   try {
     const input = parsed.data;
     const repository = AppDataSource.getRepository(Site);
-    const existing = await repository.findOne({ where: { name: input.name } });
+    const existing = await repository.findOne({ where: { name: input.name, companyId: req.authProfile!.companyId } });
     if (existing) { res.status(409).json({ error: { code: "SITE_ALREADY_EXISTS", message: "Un site porte déjà ce nom." } }); return; }
     const site = repository.create({
       ...input,
+      companyId: req.authProfile!.companyId,
       ownerEmail: input.ownerEmail || null,
       powerKw: input.powerKw == null ? null : String(input.powerKw),
       latitude: input.latitude == null ? null : String(input.latitude),
@@ -92,12 +93,12 @@ sitesRouter.patch("/:id", async (req, res, next) => {
   }
   try {
     const repository = AppDataSource.getRepository(Site);
-    const site = await repository.findOne({ where: { id: req.params.id } });
+    const site = await repository.findOne({ where: { id: req.params.id, companyId: req.authProfile!.companyId } });
     if (!site) { res.status(404).json({ error: { code: "SITE_NOT_FOUND", message: "Site introuvable." } }); return; }
     const input = parsed.data;
     if (input.name && input.name.toLocaleLowerCase() !== site.name.toLocaleLowerCase()) {
       const duplicate = await repository.createQueryBuilder("site")
-        .where("LOWER(site.name) = LOWER(:name)", { name: input.name }).andWhere("site.id != :id", { id: site.id }).getOne();
+        .where("LOWER(site.name) = LOWER(:name)", { name: input.name }).andWhere("site.companyId = :companyId", { companyId: req.authProfile!.companyId }).andWhere("site.id != :id", { id: site.id }).getOne();
       if (duplicate) { res.status(409).json({ error: { code: "SITE_ALREADY_EXISTS", message: "Un site porte déjà ce nom." } }); return; }
     }
     Object.assign(site, input);
@@ -117,7 +118,7 @@ sitesRouter.delete("/:id", async (req, res, next) => {
   }
   try {
     const repository = AppDataSource.getRepository(Site);
-    const site = await repository.findOne({ where: { id: req.params.id }, relations: { equipment: true, planifications: true, rapports: true } });
+    const site = await repository.findOne({ where: { id: req.params.id, companyId: req.authProfile!.companyId }, relations: { equipment: true, planifications: true, rapports: true } });
     if (!site) { res.status(404).json({ error: { code: "SITE_NOT_FOUND", message: "Site introuvable." } }); return; }
     if (site.equipment?.length || site.planifications?.length || site.rapports?.length) {
       res.status(409).json({ error: { code: "SITE_IN_USE", message: "Ce site est lié à des équipements, planifications ou rapports. Désactivez-le plutôt que de le supprimer." } });
