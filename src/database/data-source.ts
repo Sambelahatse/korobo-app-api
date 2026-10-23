@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { env } from "../config/env";
 import { AppUser } from "../entities/AppUser";
+import { Organization } from "../entities/Organization";
 import { Site } from "../entities/Site";
 import { Equipment } from "../entities/Equipment";
 import { Planification } from "../entities/Planification";
@@ -24,7 +25,7 @@ export const AppDataSource = new DataSource({
         ...(env.DATABASE_CA_CERT ? { ca: env.DATABASE_CA_CERT.replace(/\\n/g, "\n") } : {})
       }
     : false,
-  entities: [AppUser, Site, Equipment, Planification, Rapport],
+  entities: [Organization, AppUser, Site, Equipment, Planification, Rapport],
   migrations: ["migrations/*.{ts,js}"],
   synchronize: false,
   migrationsRun: false,
