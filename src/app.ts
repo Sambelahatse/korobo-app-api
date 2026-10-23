@@ -8,6 +8,7 @@ import { googleAuthRouter } from "./routes/google-auth.routes";
 import { accountRouter } from "./routes/account.routes";
 import { equipmentRouter } from "./routes/equipment.routes";
 import { sitesRouter } from "./routes/sites.routes";
+import { companyRouter } from "./routes/company.routes";
 
 export const app = express();
 
@@ -21,6 +22,7 @@ app.use("/auth/google", googleAuthRouter);
 app.use("/account", accountRouter);
 app.use("/equipment", equipmentRouter);
 app.use("/sites", sitesRouter);
+app.use("/company", companyRouter);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
