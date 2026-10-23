@@ -24,6 +24,9 @@ export class Site {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
+  @Column({ name: "public_id", type: "varchar", length: 30, unique: true, insert: false, update: false })
+  publicId!: string;
+
   @Column({ name: "company_id", type: "uuid" })
   companyId!: string;
 
