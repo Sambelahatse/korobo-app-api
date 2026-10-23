@@ -371,7 +371,7 @@ equipmentRouter.delete("/:id", async (req, res, next) => {
   if (!z.string().uuid().safeParse(req.params.id).success) { fail(res, 400, "EQUIPMENT_ID_INVALID", "Identifiant d’équipement invalide."); return; }
   try {
     const repo = AppDataSource.getRepository(Equipment);
-    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull() } });
+    const equipment = await repo.findOne({ where: { id: req.params.id, archivedAt: IsNull(), site: { companyId: req.authProfile!.companyId } } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     equipment.archivedAt = new Date();
     await AppDataSource.transaction(async manager => {
