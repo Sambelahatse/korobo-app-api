@@ -162,27 +162,11 @@ googleAuthRouter.get("/callback", async (req, res) => {
       return;
     }
 
-    // Existing accounts keep their Neon-owned roles. Public Google signup can never grant admin.
+    // Company registration requires an explicit company name. Do not create an orphaned
+    // user from Google OAuth; direct the user to the company registration form instead.
     if (!user && flow === "register") {
-      const fullName = googleProfile.name?.trim().slice(0, 160) || (email.split("@")[0] || "KOROBO user").slice(0, 160);
-      try {
-        user = repository.create({
-          id: randomUUID(),
-          fullName,
-          email,
-          passwordHash: null,
-          googleSub: googleProfile.id,
-          role: "technician",
-          phone: null,
-          isActive: true
-        });
-        user = await repository.save(user);
-      } catch (creationError) {
-        user = await repository.createQueryBuilder("user")
-          .where("LOWER(user.email) = LOWER(:email)", { email })
-          .getOne();
-        if (!user) throw creationError;
-      }
+      res.redirect(frontendRedirect({ google_error: "google_company_required" }, "register"));
+      return;
     }
 
     if (!user || !user.isActive || (user.googleSub && user.googleSub !== googleProfile.id)) {
