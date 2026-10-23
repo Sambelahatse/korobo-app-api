@@ -212,7 +212,7 @@ authRouter.post("/users/:id/activation-link", authenticate, requireAdmin, async 
   }
   try {
     const repository = AppDataSource.getRepository(AppUser);
-    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).andWhere("user.companyId = :companyId", { companyId: req.authProfile!.companyId }).getOne();
     if (!user) {
       res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
       return;
