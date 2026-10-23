@@ -66,7 +66,7 @@ authRouter.post("/register", async (req, res, next) => {
     await runner.startTransaction();
     const input = parsed.data;
     const email = input.email.toLowerCase();
-    const existing = await runner.manager.getRepository(AppUser).findOne({ where: { email } });
+    const existing = await runner.manager.getRepository(AppUser).createQueryBuilder("user").where("LOWER(user.email) = :email", { email }).getOne();
     if (existing) {
       await runner.rollbackTransaction();
       res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "Cette adresse e-mail possède déjà un compte." } });
