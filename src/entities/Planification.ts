@@ -41,6 +41,12 @@ export class Planification {
   @Column({ name: "scheduled_at", type: "timestamptz" })
   scheduledAt!: Date;
 
+  @Column({ name: "start_time", type: "time", default: "09:00" })
+  startTime!: string;
+
+  @Column({ name: "end_time", type: "time", default: "10:00" })
+  endTime!: string;
+
   @Column({ name: "duration_minutes", type: "integer", nullable: true })
   durationMinutes!: number | null;
 
