@@ -183,7 +183,7 @@ googleAuthRouter.get("/callback", async (req, res) => {
           const organization = manager.create(Organization, { id: randomUUID(), name: organizationName });
           await manager.save(Organization, organization);
           const newUser = manager.create(AppUser, {
-            id: randomUUID(), fullName, email, passwordHash: null, googleSub: googleProfile.id,
+            id: randomUUID(), fullName, email, passwordHash: null, googleSub: googleProfile.id!,
             role: "admin", phone: null, isActive: true, organizationId: organization.id
           });
           return manager.save(AppUser, newUser);
