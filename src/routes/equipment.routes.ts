@@ -295,6 +295,9 @@ equipmentRouter.post("/:id/maintenance", async (req, res, next) => {
     const equipment = await AppDataSource.getRepository(Equipment).findOne({ where: { id: req.params.id, archivedAt: IsNull(), site: { companyId: req.authProfile!.companyId } } });
     if (!equipment) { fail(res, 404, "EQUIPMENT_NOT_FOUND", "Équipement introuvable."); return; }
     const m = parsed.data;
+    if (m.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: m.assignedToId, isActive: true, companyId: req.authProfile!.companyId } })) {
+      fail(res, 400, "ASSIGNEE_NOT_FOUND", "L’utilisateur affecté est introuvable ou inactif dans cette entreprise."); return;
+    }
     const rows = await AppDataSource.query(
       `INSERT INTO public.equipment_maintenance
        (equipment_id,maintenance_type,status,priority,title,description,diagnosis,work_performed,cost,scheduled_at,next_due_at,assigned_to,created_by,started_at,completed_at)
@@ -336,6 +339,9 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
       nextDueAt: patch.nextDueAt !== undefined ? patch.nextDueAt : current.next_due_at,
       assignedToId: patch.assignedToId !== undefined ? patch.assignedToId : current.assigned_to
     };
+    if (merged.assignedToId && !await AppDataSource.getRepository(AppUser).findOne({ where: { id: String(merged.assignedToId), isActive: true, companyId: req.authProfile!.companyId } })) {
+      fail(res, 400, "ASSIGNEE_NOT_FOUND", "L’utilisateur affecté est introuvable ou inactif dans cette entreprise."); return;
+    }
     const rows = await AppDataSource.query(
       `UPDATE public.equipment_maintenance SET maintenance_type=$2,status=$3,priority=$4,title=$5,description=$6,diagnosis=$7,work_performed=$8,cost=$9,scheduled_at=$10,next_due_at=$11,assigned_to=$12,
        started_at=CASE WHEN $3='in_progress' THEN COALESCE(started_at,now()) ELSE started_at END,
