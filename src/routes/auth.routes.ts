@@ -283,7 +283,7 @@ authRouter.post("/users", authenticate, requireAdmin, async (req, res, next) => 
 authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => {
   try {
     const users = await AppDataSource.getRepository(AppUser).createQueryBuilder("user")
-      .select(["user.id", "user.fullName", "user.email", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
+      .select(["user.id", "user.fullName", "user.email", "user.organizationId", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
       .addSelect("user.passwordHash")
       .where("user.organizationId = :organizationId", { organizationId: _req.authProfile!.organizationId })
       .orderBy("user.createdAt", "DESC")
