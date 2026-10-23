@@ -19,7 +19,7 @@ async function main(): Promise<void> {
       if (!AppDataSource.isInitialized) { next(new Error("DATABASE_UNAVAILABLE")); return; }
       const profile = await AppDataSource.getRepository(AppUser).findOne({ where: { id: claims.sub } });
       if (!profile || !profile.isActive || profile.email.toLowerCase() !== claims.email.toLowerCase()) { next(new Error("INVALID_SESSION")); return; }
-      socket.data.authProfile = { id: profile.id, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive };
+      socket.data.authProfile = { id: profile.id, companyId: profile.companyId, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive };
       next();
     } catch { next(new Error("INVALID_SESSION")); }
   });
