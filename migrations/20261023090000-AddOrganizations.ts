@@ -46,11 +46,26 @@ export class AddOrganizations20261023090000 implements MigrationInterface {
         ALTER COLUMN "organization_id" SET NOT NULL,
         ADD CONSTRAINT "FK_sites_organization" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT
     `);
+    await queryRunner.query(`ALTER TABLE "public"."equipment" ADD COLUMN "organization_id" uuid`);
+    await queryRunner.query(`
+      UPDATE "public"."equipment" AS equipment
+      SET "organization_id" = site."organization_id"
+      FROM "public"."sites" AS site
+      WHERE equipment."site_id" = site."id" AND equipment."organization_id" IS NULL
+    `);
+    await queryRunner.query(`
+      ALTER TABLE "public"."equipment"
+        ALTER COLUMN "organization_id" SET NOT NULL,
+        ADD CONSTRAINT "FK_equipment_organization" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT
+    `);
+    await queryRunner.query(`CREATE INDEX "equipment_organization_id_idx" ON "public"."equipment" ("organization_id")`);
     await queryRunner.query(`CREATE INDEX "app_users_organization_id_idx" ON "public"."app_users" ("organization_id")`);
     await queryRunner.query(`CREATE INDEX "sites_organization_id_idx" ON "public"."sites" ("organization_id")`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."equipment_organization_id_idx"`);
+    await queryRunner.query(`ALTER TABLE "public"."equipment" DROP CONSTRAINT IF EXISTS "FK_equipment_organization", DROP COLUMN IF EXISTS "organization_id"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."sites_organization_id_idx"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."app_users_organization_id_idx"`);
     await queryRunner.query(`ALTER TABLE "public"."sites" DROP CONSTRAINT IF EXISTS "FK_sites_organization", DROP COLUMN IF EXISTS "organization_id"`);
