@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { env } from "./config/env";
 import { AppDataSource } from "./database/data-source";
 import { authRouter } from "./routes/auth.routes";
+import { registrationRouter } from "./routes/registration.routes";
 import { googleAuthRouter } from "./routes/google-auth.routes";
 import { accountRouter } from "./routes/account.routes";
 import { equipmentRouter } from "./routes/equipment.routes";
@@ -17,6 +18,7 @@ app.use(cors({ origin: env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
 app.use(express.json({ limit: "1mb" }));
 
 app.use("/auth", authRouter);
+app.use("/register", registrationRouter);
 app.use("/auth/google", googleAuthRouter);
 app.use("/account", accountRouter);
 app.use("/equipment", equipmentRouter);

@@ -5,6 +5,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { AppDataSource } from "../database/data-source";
 import { AppUser, type AppUserRole } from "../entities/AppUser";
+import { Organization } from "../entities/Organization";
 import { env } from "../config/env";
 import { authenticate, requireAdmin } from "../middleware/authenticate";
 import { createOneTimeToken, hashToken, issueAccessToken, verifyAccessToken } from "../services/auth";
@@ -22,7 +23,7 @@ function tokenMatches(candidate: string | undefined, expected: string | undefine
   return a.length === b.length && timingSafeEqual(a, b);
 }
 function profilePayload(profile: AppUser) {
-  return { id: profile.id, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive };
+  return { id: profile.id, fullName: profile.fullName, email: profile.email, role: profile.role, phone: profile.phone, isActive: profile.isActive, organizationId: profile.organizationId };
 }
 async function issueSession(profile: AppUser, req: import("express").Request) {
   const accessToken = issueAccessToken({ id: profile.id, email: profile.email });
@@ -50,7 +51,9 @@ authRouter.post("/bootstrap-owner", async (req, res, next) => {
     await runner.connect(); await runner.startTransaction(); await runner.query("SELECT pg_advisory_xact_lock($1)", [731904218]);
     if (await runner.manager.count(AppUser) > 0) { await runner.rollbackTransaction(); res.status(409).json({ error: { code: "OWNER_ALREADY_CONFIGURED", message: "The initial owner has already been created." } }); return; }
     const input = parsed.data;
-    const profile = runner.manager.create(AppUser, { id: randomUUID(), fullName: input.fullName, email: input.email.toLowerCase(), passwordHash: await bcrypt.hash(input.password, 12), role: "admin" satisfies AppUserRole, phone: input.phone || null, isActive: true });
+    const organization = runner.manager.create(Organization, { id: randomUUID(), name: input.fullName + " (espace propriétaire)" });
+    await runner.manager.save(Organization, organization);
+    const profile = runner.manager.create(AppUser, { id: randomUUID(), fullName: input.fullName, email: input.email.toLowerCase(), passwordHash: await bcrypt.hash(input.password, 12), role: "admin" satisfies AppUserRole, phone: input.phone || null, isActive: true, organizationId: organization.id });
     await runner.manager.save(AppUser, profile); await runner.commitTransaction();
     res.status(201).json({ ...await issueSession(profile, req), message: "Owner account created. Remove OWNER_BOOTSTRAP_TOKEN from the API environment now." });
   } catch (error) { if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined); next(error); }
@@ -86,7 +89,7 @@ authRouter.post("/invite", authenticate, requireAdmin, async (req, res, next) =>
   try {
     const email = parsed.data.email.toLowerCase(), repository = AppDataSource.getRepository(AppUser);
     if (await repository.findOne({ where: { email } })) { res.status(409).json({ error: { code: "EMAIL_ALREADY_EXISTS", message: "Un utilisateur avec cette adresse e-mail existe déjà." } }); return; }
-    const profile = repository.create({ id: randomUUID(), fullName: parsed.data.fullName, email, role: parsed.data.role, phone: parsed.data.phone || null, isActive: false, passwordHash: null });
+    const profile = repository.create({ id: randomUUID(), fullName: parsed.data.fullName, email, role: parsed.data.role, phone: parsed.data.phone || null, isActive: false, passwordHash: null, organizationId: req.authProfile!.organizationId });
     await repository.save(profile);
     const token = await createOneTimeAction(profile.id, "invite", 72);
     const link = new URL("/#/reset-password", env.FRONTEND_URL); link.searchParams.set("token", token);
@@ -114,7 +117,7 @@ authRouter.post("/users/:id/invite", authenticate, requireAdmin, async (req, res
   }
   try {
     const repository = AppDataSource.getRepository(AppUser);
-    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).andWhere("user.organizationId = :organizationId", { organizationId: req.authProfile!.organizationId }).getOne();
     if (!user) { res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } }); return; }
     if (user.isActive || user.passwordHash) {
       res.status(409).json({ error: { code: "USER_ALREADY_ACTIVATED", message: "Ce compte est déjà activé. Aucune invitation d’activation n’est nécessaire." } });
@@ -149,7 +152,7 @@ authRouter.post("/users/:id/activation-link", authenticate, requireAdmin, async 
   }
   try {
     const repository = AppDataSource.getRepository(AppUser);
-    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).getOne();
+    const user = await repository.createQueryBuilder("user").addSelect("user.passwordHash").where("user.id = :id", { id: targetUserId }).andWhere("user.organizationId = :organizationId", { organizationId: req.authProfile!.organizationId }).getOne();
     if (!user) {
       res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
       return;
@@ -261,7 +264,8 @@ authRouter.post("/users", authenticate, requireAdmin, async (req, res, next) => 
       role: parsed.data.role,
       phone: parsed.data.phone || null,
       isActive: false,
-      passwordHash: null
+      passwordHash: null,
+      organizationId: req.authProfile!.organizationId
     });
     await repository.save(profile);
     const token = await createOneTimeAction(profile.id, "invite", 72);
@@ -279,8 +283,9 @@ authRouter.post("/users", authenticate, requireAdmin, async (req, res, next) => 
 authRouter.get("/users", authenticate, requireAdmin, async (_req, res, next) => {
   try {
     const users = await AppDataSource.getRepository(AppUser).createQueryBuilder("user")
-      .select(["user.id", "user.fullName", "user.email", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
+      .select(["user.id", "user.fullName", "user.email", "user.organizationId", "user.role", "user.phone", "user.isActive", "user.createdAt", "user.updatedAt"])
       .addSelect("user.passwordHash")
+      .where("user.organizationId = :organizationId", { organizationId: _req.authProfile!.organizationId })
       .orderBy("user.createdAt", "DESC")
       .getMany();
     const activity = await AppDataSource.query(
@@ -317,7 +322,7 @@ authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next
     try {
       await runner.query("SELECT pg_advisory_xact_lock($1)", [731904219]);
       const repository = runner.manager.getRepository(AppUser);
-      const user = await repository.findOne({ where: { id: targetUserId } });
+      const user = await repository.findOne({ where: { id: targetUserId, organizationId: req.authProfile!.organizationId } });
       if (!user) {
         await runner.rollbackTransaction();
         res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
@@ -331,7 +336,7 @@ authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next
         return;
       }
       if (user.role === "admin" && user.isActive && (nextRole !== "admin" || !nextActive)) {
-        const admins = await repository.count({ where: { role: "admin", isActive: true } });
+        const admins = await repository.count({ where: { role: "admin", isActive: true, organizationId: req.authProfile!.organizationId } });
         if (admins <= 1) {
           await runner.rollbackTransaction();
           res.status(409).json({ error: { code: "LAST_ADMIN_REQUIRED", message: "Au moins un administrateur actif doit être conservé." } });
