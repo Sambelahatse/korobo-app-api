@@ -10,6 +10,7 @@ import { equipmentRouter } from "./routes/equipment.routes";
 import { sitesRouter } from "./routes/sites.routes";
 import { companyRouter } from "./routes/company.routes";
 import { planificationsRouter } from "./routes/planifications.routes";
+import { rapportsRouter } from "./routes/rapports.routes";
 
 export const app = express();
 
@@ -25,6 +26,7 @@ app.use("/equipment", equipmentRouter);
 app.use("/sites", sitesRouter);
 app.use("/company", companyRouter);
 app.use("/planifications", planificationsRouter);
+app.use("/rapports", rapportsRouter);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
