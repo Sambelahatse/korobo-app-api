@@ -3,6 +3,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
+import { Organization } from "../entities/Organization";
 import { env } from "../config/env";
 import { issueAccessToken, verifyAccessToken } from "../services/auth";
 import { authenticate } from "../middleware/authenticate";
@@ -27,8 +28,13 @@ googleAuthRouter.get("/", (req, res) => {
     return;
   }
   const requestedFlow = req.query.flow === "register" ? "register" : "login";
+  const requestedOrganizationName = typeof req.query.companyName === "string" ? req.query.companyName.trim().slice(0, 180) : "";
+  if (requestedFlow === "register" && requestedOrganizationName.length < 2) {
+    res.redirect(frontendRedirect({ google_error: "company_name_required" }, "register"));
+    return;
+  }
   const state = jwt.sign(
-    { purpose: "google_oauth", flow: requestedFlow, nonce: randomBytes(24).toString("base64url") },
+    { purpose: "google_oauth", flow: requestedFlow, organizationName: requestedOrganizationName, nonce: randomBytes(24).toString("base64url") },
     oauthSecret(),
     { expiresIn: "10m", issuer: "korobo-app-api", audience: "korobo-google-oauth" }
   );
@@ -162,21 +168,26 @@ googleAuthRouter.get("/callback", async (req, res) => {
       return;
     }
 
-    // Existing accounts keep their Neon-owned roles. Public Google signup can never grant admin.
+    // A public Google registration creates a new tenant and its first administrator atomically.
     if (!user && flow === "register") {
       const fullName = googleProfile.name?.trim().slice(0, 160) || (email.split("@")[0] || "KOROBO user").slice(0, 160);
+      const organizationName = typeof claims === "object" && claims !== null && "organizationName" in claims && typeof claims.organizationName === "string"
+        ? claims.organizationName.trim().slice(0, 180)
+        : "";
+      if (organizationName.length < 2) {
+        res.redirect(frontendRedirect({ google_error: "company_name_required" }, "register"));
+        return;
+      }
       try {
-        user = repository.create({
-          id: randomUUID(),
-          fullName,
-          email,
-          passwordHash: null,
-          googleSub: googleProfile.id,
-          role: "technician",
-          phone: null,
-          isActive: true
+        user = await AppDataSource.transaction(async manager => {
+          const organization = manager.create(Organization, { id: randomUUID(), name: organizationName });
+          await manager.save(Organization, organization);
+          const newUser = manager.create(AppUser, {
+            id: randomUUID(), fullName, email, passwordHash: null, googleSub: googleProfile.id,
+            role: "admin", phone: null, isActive: true, organizationId: organization.id
+          });
+          return manager.save(AppUser, newUser);
         });
-        user = await repository.save(user);
       } catch (creationError) {
         user = await repository.createQueryBuilder("user")
           .where("LOWER(user.email) = LOWER(:email)", { email })
