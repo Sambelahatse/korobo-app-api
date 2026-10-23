@@ -2,6 +2,8 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryColumn,
   UpdateDateColumn
@@ -9,6 +11,7 @@ import {
 import type { Relation } from "typeorm";
 import { Planification } from "./Planification";
 import { Rapport } from "./Rapport";
+import { Organization } from "./Organization";
 
 export type AppUserRole = "admin" | "manager" | "technician" | "viewer";
 
@@ -22,6 +25,13 @@ export class AppUser {
 
   @Column({ type: "varchar", length: 254, unique: true })
   email!: string;
+
+  @Column({ name: "organization_id", type: "uuid" })
+  organizationId!: string;
+
+  @ManyToOne(() => Organization, (organization) => organization.users, { onDelete: "RESTRICT" })
+  @JoinColumn({ name: "organization_id" })
+  organization!: Relation<Organization>;
 
   @Column({ name: "password_hash", type: "varchar", length: 255, nullable: true, select: false })
   passwordHash!: string | null;
