@@ -11,6 +11,7 @@ import { sitesRouter } from "./routes/sites.routes";
 import { companyRouter } from "./routes/company.routes";
 import { planificationsRouter } from "./routes/planifications.routes";
 import { rapportsRouter } from "./routes/rapports.routes";
+import { notificationsRouter } from "./routes/notifications.routes";
 
 export const app = express();
 
@@ -27,6 +28,7 @@ app.use("/sites", sitesRouter);
 app.use("/company", companyRouter);
 app.use("/planifications", planificationsRouter);
 app.use("/rapports", rapportsRouter);
+app.use("/notifications", notificationsRouter);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({

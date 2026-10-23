@@ -6,6 +6,7 @@ import { Site } from "../entities/Site";
 import { Equipment } from "../entities/Equipment";
 import { Planification } from "../entities/Planification";
 import { Rapport } from "../entities/Rapport";
+import { Notification } from "../entities/Notification";
 import { Company } from "../entities/Company";
 
 const databaseUrl = env.DATABASE_URL ? new URL(env.DATABASE_URL) : undefined;
@@ -25,7 +26,7 @@ export const AppDataSource = new DataSource({
         ...(env.DATABASE_CA_CERT ? { ca: env.DATABASE_CA_CERT.replace(/\\n/g, "\n") } : {})
       }
     : false,
-  entities: [Company, AppUser, Site, Equipment, Planification, Rapport],
+  entities: [Company, AppUser, Site, Equipment, Planification, Rapport, Notification],
   migrations: ["migrations/*.{ts,js}"],
   synchronize: false,
   migrationsRun: false,
