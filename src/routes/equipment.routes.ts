@@ -6,6 +6,7 @@ import { AppUser } from "../entities/AppUser";
 import { Equipment } from "../entities/Equipment";
 import { Site } from "../entities/Site";
 import { authenticate } from "../middleware/authenticate";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const equipmentRouter = Router();
 equipmentRouter.use(authenticate);
@@ -164,6 +165,7 @@ equipmentRouter.post("/", async (req, res, next) => {
         [equipment.id, input.quantity, input.siteId, input.assignedToId ?? null, "Création de l’équipement", req.authProfile!.id]
       );
     });
+    emitCompanyEvent({ resource: "equipment", action: "created", entityId: equipment.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(201).json({ data: await AppDataSource.getRepository(Equipment).findOne({ where: { id: equipment.id, site: { companyId: req.authProfile!.companyId } }, relations: { site: true, assignedTo: true } }) });
   } catch (error) { next(error); }
 });
@@ -217,6 +219,7 @@ equipmentRouter.patch("/:id", async (req, res, next) => {
           previousSiteId, equipment.siteId, previousUserId, equipment.assignedToId, "Mise à jour de la fiche équipement", req.authProfile!.id]
       );
     });
+    emitCompanyEvent({ resource: "equipment", action: "updated", entityId: equipment.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: await repo.findOne({ where: { id: equipment.id, site: { companyId: req.authProfile!.companyId } }, relations: { site: true, assignedTo: true } }) });
   } catch (error) { next(error); }
 });
@@ -264,6 +267,7 @@ equipmentRouter.post("/:id/movements", async (req, res, next) => {
         [equipment.id, type, amount, fromSiteId, equipment.siteId, fromUserId, type === "assign" ? toUserId : type === "unassign" ? null : fromUserId, notes ?? null, req.authProfile!.id]
       );
     });
+    emitCompanyEvent({ resource: "equipment", action: "updated", entityId: req.params.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(201).json({ message: "Mouvement enregistré." });
   } catch (error) {
     const e = error as Error & { status?: number; code?: string };
@@ -311,6 +315,7 @@ equipmentRouter.post("/:id/maintenance", async (req, res, next) => {
     if (m.status === "completed") { equipment.lastMaintenanceAt = new Date().toISOString().slice(0, 10); equipment.nextMaintenanceAt = m.nextDueAt?.slice(0, 10) ?? null; }
     await AppDataSource.getRepository(Equipment).save(equipment);
     await recordMovement({ equipmentId: equipment.id, type: m.status === "completed" ? "maintenance_completed" : "maintenance_started", fromSiteId: equipment.siteId, toSiteId: equipment.siteId, notes: m.title, createdBy: req.authProfile!.id });
+    emitCompanyEvent({ resource: "equipment", action: "updated", entityId: equipment.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(201).json({ data: rows[0] });
   } catch (error) { next(error); }
 });
@@ -368,6 +373,7 @@ equipmentRouter.patch("/maintenance/:maintenanceId", async (req, res, next) => {
         createdBy: req.authProfile!.id
       });
     }
+    if (equipment) emitCompanyEvent({ resource: "equipment", action: "updated", entityId: equipment.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: rows[0] });
   } catch (error) { next(error); }
 });
@@ -388,6 +394,7 @@ equipmentRouter.delete("/:id", async (req, res, next) => {
         [equipment.id, equipment.quantity, equipment.siteId, equipment.assignedToId, "Archivage logique de l’équipement", req.authProfile!.id]
       );
     });
+    emitCompanyEvent({ resource: "equipment", action: "deleted", entityId: equipment.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).end();
   } catch (error) { next(error); }
 });
