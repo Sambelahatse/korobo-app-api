@@ -10,6 +10,7 @@ import { env } from "../config/env";
 import { authenticate, requireAdmin } from "../middleware/authenticate";
 import { createOneTimeToken, hashToken, issueAccessToken, verifyAccessToken } from "../services/auth";
 import { sendAccountEmail } from "../services/email";
+import { disconnectUserSockets, emitCompanyEvent } from "../services/realtime";
 
 export const authRouter = Router();
 const ownerSchema = z.object({ fullName: z.string().trim().min(2).max(160), email: z.string().trim().email().max(254), password: z.string().min(12).max(128), phone: z.string().trim().max(40).optional() });
@@ -388,6 +389,7 @@ authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next
         res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utilisateur introuvable." } });
         return;
       }
+      const wasActive = user.isActive;
       const nextRole = input.role ?? user.role;
       const nextActive = input.isActive ?? user.isActive;
       if (user.id === req.authProfile!.id && (nextRole !== "admin" || !nextActive)) {
@@ -423,6 +425,16 @@ authRouter.patch("/users/:id", authenticate, requireAdmin, async (req, res, next
         await runner.query("UPDATE public.auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [user.id]);
       }
       await runner.commitTransaction();
+      emitCompanyEvent({
+        resource: "user",
+        action: "updated",
+        entityId: user.id,
+        companyId: user.companyId,
+        actorId: req.authProfile!.id
+      });
+      if (wasActive && !user.isActive) {
+        await disconnectUserSockets(user.companyId, user.id);
+      }
       res.json({ data: profilePayload(user), message: "Utilisateur mis à jour." });
     } catch (error) {
       if (runner.isTransactionActive) await runner.rollbackTransaction().catch(() => undefined);
