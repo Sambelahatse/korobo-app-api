@@ -6,7 +6,8 @@ export type RealtimeResource =
   | "planification"
   | "rapport"
   | "notification"
-  | "dashboard";
+  | "dashboard"
+  | "user";
 
 export type RealtimeAction = "created" | "updated" | "deleted";
 
