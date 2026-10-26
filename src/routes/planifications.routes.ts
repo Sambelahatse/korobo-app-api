@@ -6,6 +6,7 @@ import { Planification } from "../entities/Planification";
 import { Notification } from "../entities/Notification";
 import { Site } from "../entities/Site";
 import { authenticate } from "../middleware/authenticate";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const planificationsRouter = Router();
 planificationsRouter.use(authenticate);
@@ -129,6 +130,7 @@ planificationsRouter.post("/", async (req, res, next) => {
       createdById: req.authProfile!.id
     });
     await repo.save(item);
+    emitCompanyEvent({ resource: "planification", action: "created", entityId: item.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     if (item.assignedToId) {
       await AppDataSource.getRepository(Notification).save(AppDataSource.getRepository(Notification).create({
         companyId: req.authProfile!.companyId, recipientId: item.assignedToId, type: "info",
@@ -203,6 +205,7 @@ planificationsRouter.patch("/:id", async (req, res, next) => {
     else if (input.startTime !== undefined || input.endTime !== undefined) item.durationMinutes = Math.round((Date.parse("2000-01-01T" + effectiveEnd + ":00Z") - Date.parse("2000-01-01T" + effectiveStart + ":00Z")) / 60000);
     if (input.assignedToId !== undefined) item.assignedToId = input.assignedToId;
     await repo.save(item);
+    emitCompanyEvent({ resource: "planification", action: "updated", entityId: item.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     if (input.assignedToId && input.assignedToId !== undefined) {
       await AppDataSource.getRepository(Notification).save(AppDataSource.getRepository(Notification).create({
         companyId: req.authProfile!.companyId, recipientId: input.assignedToId, type: "info",
@@ -231,6 +234,7 @@ planificationsRouter.delete("/:id", async (req, res, next) => {
       return;
     }
     await repo.remove(item);
+    emitCompanyEvent({ resource: "planification", action: "deleted", entityId: item.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).send();
   } catch (error) { next(error); }
 });
