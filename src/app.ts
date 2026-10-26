@@ -12,6 +12,7 @@ import { companyRouter } from "./routes/company.routes";
 import { planificationsRouter } from "./routes/planifications.routes";
 import { rapportsRouter } from "./routes/rapports.routes";
 import { notificationsRouter } from "./routes/notifications.routes";
+import { databaseRouter } from "./routes/database.routes";
 
 export const app = express();
 
@@ -29,6 +30,7 @@ app.use("/company", companyRouter);
 app.use("/planifications", planificationsRouter);
 app.use("/rapports", rapportsRouter);
 app.use("/notifications", notificationsRouter);
+app.use("/database", databaseRouter);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({
