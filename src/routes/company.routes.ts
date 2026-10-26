@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppDataSource } from "../database/data-source";
 import { Company } from "../entities/Company";
 import { authenticate } from "../middleware/authenticate";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const companyRouter = Router();
 companyRouter.use(authenticate);
@@ -72,6 +73,7 @@ companyRouter.patch("/", async (req, res, next) => {
     company.website = input.website || null;
     company.logoUrl = input.logoUrl || null;
     await repository.save(company);
+    emitCompanyEvent({ resource: "settings", action: "updated", entityId: company.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: serialize(company) });
   } catch (error) { next(error); }
 });
