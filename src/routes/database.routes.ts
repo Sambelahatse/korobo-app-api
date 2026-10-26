@@ -59,3 +59,44 @@ databaseRouter.get("/overview", async (req, res, next) => {
     next(error);
   }
 });
+
+// Expose column metadata only: no SQL input and no row contents or secrets.
+databaseRouter.get("/tables/:tableName", async (req, res, next) => {
+  if (!AppDataSource.isInitialized) {
+    res.status(503).json({ error: { code: "DATABASE_UNAVAILABLE", message: "La base de données n’est pas disponible." } });
+    return;
+  }
+
+  const table = tables.find((item) => item.name === req.params.tableName);
+  if (!table) {
+    res.status(404).json({ error: { code: "TABLE_NOT_ALLOWED", message: "Cette table n’est pas disponible dans le module." } });
+    return;
+  }
+
+  try {
+    const rows = await AppDataSource.query(
+      "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position",
+      [table.name]
+    ) as Array<{ column_name: string; data_type: string; is_nullable: string }>;
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: { code: "TABLE_NOT_FOUND", message: "Cette table n’existe pas dans le schéma public." } });
+      return;
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      data: {
+        name: table.name,
+        label: table.label,
+        columns: rows.map((column) => ({
+          name: column.column_name,
+          type: column.data_type,
+          nullable: column.is_nullable === "YES"
+        }))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
