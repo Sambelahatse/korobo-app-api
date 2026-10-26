@@ -35,6 +35,17 @@ async function main(): Promise<void> {
         next(new Error("INVALID_SESSION"));
         return;
       }
+      // Match HTTP authentication: a valid JWT is not enough after logout/revocation.
+      if (claims.jti) {
+        const sessions = await AppDataSource.query(
+          "SELECT id FROM public.auth_sessions WHERE token_id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now() LIMIT 1",
+          [claims.jti, profile.id]
+        ) as Array<{ id: string }>;
+        if (!sessions.length) {
+          next(new Error("SESSION_REVOKED"));
+          return;
+        }
+      }
       socket.data.authProfile = {
         id: profile.id,
         companyId: profile.companyId,
