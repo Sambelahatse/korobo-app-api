@@ -6,7 +6,8 @@ export type RealtimeResource =
   | "planification"
   | "rapport"
   | "notification"
-  | "dashboard";
+  | "dashboard"
+  | "user";
 
 export type RealtimeAction = "created" | "updated" | "deleted";
 
@@ -42,4 +43,19 @@ export function emitCompanyEvent(
 
 export function companyRoom(companyId: string): string {
   return `company:${companyId}`;
+}
+
+
+/** Disconnects active sockets belonging to a user whose access has been revoked. */
+export async function disconnectUserSockets(companyId: string, userId: string): Promise<void> {
+  if (!io || !companyId || !userId) return;
+  try {
+    const sockets = await io.in(companyRoom(companyId)).fetchSockets();
+    for (const socket of sockets) {
+      const profile = socket.data.authProfile as { id?: string } | undefined;
+      if (profile?.id === userId) socket.disconnect(true);
+    }
+  } catch {
+    // A disconnect failure must not turn an already-committed user update into an API error.
+  }
 }
