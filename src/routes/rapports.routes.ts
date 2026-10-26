@@ -6,6 +6,7 @@ import { Planification } from "../entities/Planification";
 import { Rapport } from "../entities/Rapport";
 import { Site } from "../entities/Site";
 import { authenticate } from "../middleware/authenticate";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const rapportsRouter = Router();
 rapportsRouter.use(authenticate);
@@ -88,6 +89,7 @@ rapportsRouter.post("/", async (req, res, next) => {
     });
     if (input.status === "validated" && !canValidate(req.authProfile?.role)) { fail(res, 403, "REPORT_VALIDATE_FORBIDDEN", "Seuls les administrateurs et responsables peuvent valider un rapport."); return; }
     await repo.save(item);
+    emitCompanyEvent({ resource: "rapport", action: "created", entityId: item.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     const data = await repo.findOne({ where: { id: item.id }, relations: { site: true, technician: true, createdBy: true, validatedBy: true, planification: true } });
     res.status(201).json({ data });
   } catch (error) { next(error); }
@@ -127,6 +129,7 @@ rapportsRouter.patch("/:id", async (req, res, next) => {
     if (input.status === "validated") { item.validatedById = req.authProfile!.id; item.validatedAt = new Date(); }
     if (input.status === "draft") { item.validatedById = null; item.validatedAt = null; }
     await repo.save(item);
+    emitCompanyEvent({ resource: "rapport", action: "updated", entityId: item.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     const data = await repo.findOne({ where: { id: item.id }, relations: { site: true, technician: true, createdBy: true, validatedBy: true, planification: true } });
     res.json({ data });
   } catch (error) { next(error); }
@@ -141,6 +144,7 @@ rapportsRouter.delete("/:id", async (req, res, next) => {
     if (!item) { fail(res, 404, "REPORT_NOT_FOUND", "Rapport introuvable."); return; }
     if (item.status === "validated" && !canValidate(req.authProfile?.role)) { fail(res, 403, "REPORT_LOCKED", "Seul un administrateur ou responsable peut supprimer un rapport validé."); return; }
     await repo.remove(item);
+    emitCompanyEvent({ resource: "rapport", action: "deleted", entityId: item.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).send();
   } catch (error) { next(error); }
 });
