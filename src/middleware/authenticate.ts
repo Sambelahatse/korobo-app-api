@@ -11,6 +11,10 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   }
   try {
     const claims = verifyAccessToken(match[1]!);
+    if (!claims.jti) {
+      res.status(401).json({ error: { code: "INVALID_SESSION", message: "Your session is invalid or expired." } });
+      return;
+    }
     if (!AppDataSource.isInitialized) {
       res.status(503).json({ error: { code: "DATABASE_UNAVAILABLE", message: "Authentication is temporarily unavailable." } });
       return;
@@ -20,17 +24,20 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       res.status(401).json({ error: { code: "INVALID_SESSION", message: "Your session is invalid or expired." } });
       return;
     }
-    if (claims.jti) {
-      const sessions = await AppDataSource.query(
-        "SELECT id FROM public.auth_sessions WHERE token_id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now() LIMIT 1",
-        [claims.jti, profile.id]
-      ) as Array<{ id: string }>;
-      if (!sessions.length) {
-        res.status(401).json({ error: { code: "SESSION_REVOKED", message: "This session has been revoked or expired." } });
-        return;
-      }
-      await AppDataSource.query("UPDATE public.auth_sessions SET last_seen_at = now() WHERE token_id = $1 AND revoked_at IS NULL", [claims.jti]);
+
+    const sessions = await AppDataSource.query(
+      "SELECT id FROM public.auth_sessions WHERE token_id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now() LIMIT 1",
+      [claims.jti, profile.id]
+    ) as Array<{ id: string }>;
+    if (!sessions.length) {
+      res.status(401).json({ error: { code: "SESSION_REVOKED", message: "This session has been revoked or expired." } });
+      return;
     }
+    await AppDataSource.query(
+      "UPDATE public.auth_sessions SET last_seen_at = now() WHERE token_id = $1 AND user_id = $2 AND revoked_at IS NULL",
+      [claims.jti, profile.id]
+    );
+
     req.authUser = { id: profile.id, email: profile.email };
     req.authProfile = profile;
     next();
