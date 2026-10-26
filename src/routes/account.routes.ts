@@ -70,6 +70,7 @@ accountRouter.put("/preferences", async (req, res, next) => {
        RETURNING preferences`,
       [req.authProfile!.id, JSON.stringify(parsed.data)]
     ) as Array<{ preferences: unknown }>;
+    emitCompanyEvent({ resource: "settings", action: "updated", companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: rows[0]?.preferences ?? parsed.data });
   } catch (error) { next(error); }
 });
@@ -98,6 +99,7 @@ accountRouter.delete("/sessions/:id", async (req, res, next) => {
       [req.params.id, req.authProfile!.id]
     ) as Array<{ id: string }>;
     if (!result.length) { accountError(res, 404, "SESSION_NOT_FOUND", "Session introuvable ou déjà révoquée."); return; }
+    emitCompanyEvent({ resource: "settings", action: "updated", companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).end();
   } catch (error) { next(error); }
 });
