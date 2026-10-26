@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppDataSource } from "../database/data-source";
 import { Site } from "../entities/Site";
 import { authenticate } from "../middleware/authenticate";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const sitesRouter = Router();
 sitesRouter.use(authenticate);
@@ -77,6 +78,7 @@ sitesRouter.post("/", async (req, res, next) => {
       notes: input.notes ?? null
     });
     await repository.save(site);
+    emitCompanyEvent({ resource: "site", action: "created", entityId: site.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(201).json({ data: site });
   } catch (error) { next(error); }
 });
@@ -107,6 +109,7 @@ sitesRouter.patch("/:id", async (req, res, next) => {
     if (input.longitude !== undefined) site.longitude = input.longitude == null ? null : String(input.longitude);
     if (input.ownerEmail !== undefined) site.ownerEmail = input.ownerEmail || null;
     await repository.save(site);
+    emitCompanyEvent({ resource: "site", action: "updated", entityId: site.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: site });
   } catch (error) { next(error); }
 });
@@ -125,6 +128,7 @@ sitesRouter.delete("/:id", async (req, res, next) => {
       return;
     }
     await repository.remove(site);
+    emitCompanyEvent({ resource: "site", action: "deleted", entityId: site.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).send();
   } catch (error) { next(error); }
 });
