@@ -7,7 +7,8 @@ export type RealtimeResource =
   | "rapport"
   | "notification"
   | "dashboard"
-  | "user";
+  | "user"
+  | "settings";
 
 export type RealtimeAction = "created" | "updated" | "deleted";
 

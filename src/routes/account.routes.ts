@@ -6,6 +6,7 @@ import { AppDataSource } from "../database/data-source";
 import { AppUser } from "../entities/AppUser";
 import { authenticate } from "../middleware/authenticate";
 import { verifyAccessToken } from "../services/auth";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const accountRouter = Router();
 accountRouter.use(authenticate);
@@ -46,6 +47,7 @@ accountRouter.patch("/profile", async (req, res, next) => {
     user.fullName = parsed.data.fullName;
     user.phone = parsed.data.phone?.trim() || null;
     await repository.save(user);
+    emitCompanyEvent({ resource: "user", action: "updated", entityId: user.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: { id: user.id, fullName: user.fullName, email: user.email, phone: user.phone, role: user.role, isActive: user.isActive } });
   } catch (error) { next(error); }
 });
@@ -68,6 +70,7 @@ accountRouter.put("/preferences", async (req, res, next) => {
        RETURNING preferences`,
       [req.authProfile!.id, JSON.stringify(parsed.data)]
     ) as Array<{ preferences: unknown }>;
+    emitCompanyEvent({ resource: "settings", action: "updated", companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ data: rows[0]?.preferences ?? parsed.data });
   } catch (error) { next(error); }
 });
@@ -96,6 +99,7 @@ accountRouter.delete("/sessions/:id", async (req, res, next) => {
       [req.params.id, req.authProfile!.id]
     ) as Array<{ id: string }>;
     if (!result.length) { accountError(res, 404, "SESSION_NOT_FOUND", "Session introuvable ou déjà révoquée."); return; }
+    emitCompanyEvent({ resource: "settings", action: "updated", companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).end();
   } catch (error) { next(error); }
 });
@@ -108,6 +112,7 @@ accountRouter.post("/google/unlink", async (req, res, next) => {
     if (!user.passwordHash) { accountError(res, 409, "PASSWORD_REQUIRED", "Définissez d’abord un mot de passe avant de dissocier Google."); return; }
     user.googleSub = null;
     await repository.save(user);
+    emitCompanyEvent({ resource: "user", action: "updated", entityId: user.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ message: "Compte Google dissocié." });
   } catch (error) { next(error); }
 });
