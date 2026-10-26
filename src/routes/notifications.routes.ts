@@ -2,6 +2,7 @@ import { Router } from "express";
 import { AppDataSource } from "../database/data-source";
 import { Notification } from "../entities/Notification";
 import { authenticate } from "../middleware/authenticate";
+import { emitCompanyEvent } from "../services/realtime";
 
 export const notificationsRouter = Router();
 notificationsRouter.use(authenticate);
@@ -26,6 +27,7 @@ notificationsRouter.patch("/read-all", async (req, res, next) => {
       .where("company_id = :companyId AND recipient_id = :recipientId AND is_read = false", {
         companyId: req.authProfile!.companyId, recipientId: req.authProfile!.id
       }).execute();
+    emitCompanyEvent({ resource: "notification", action: "updated", companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ success: true });
   } catch (error) { next(error); }
 });
@@ -41,6 +43,7 @@ notificationsRouter.patch("/:id/read", async (req, res, next) => {
       res.status(404).json({ error: { code: "NOTIFICATION_NOT_FOUND", message: "Notification introuvable." } });
       return;
     }
+    emitCompanyEvent({ resource: "notification", action: "updated", entityId: req.params.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.json({ success: true });
   } catch (error) { next(error); }
 });
@@ -54,6 +57,7 @@ notificationsRouter.delete("/:id", async (req, res, next) => {
       res.status(404).json({ error: { code: "NOTIFICATION_NOT_FOUND", message: "Notification introuvable." } });
       return;
     }
+    emitCompanyEvent({ resource: "notification", action: "deleted", entityId: req.params.id, companyId: req.authProfile!.companyId, actorId: req.authProfile!.id });
     res.status(204).send();
   } catch (error) { next(error); }
 });
